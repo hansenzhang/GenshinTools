@@ -82,7 +82,7 @@ function getHalfSetStatLabel(
   return statKey ? t.statShort(statKey) : halfSetId;
 }
 
-function getArtifactSetLabel(
+export function getArtifactSetLabel(
   artifactSet: ArtifactSetConfig,
   t: WeaponChoiceResultCardProps["t"]
 ): string {
@@ -123,7 +123,7 @@ function formatArtifactProgressTarget(
     .join(" + ");
 }
 
-function ArtifactChoiceHoverIcon({
+export function ArtifactChoiceHoverIcon({
   artifactSet,
 }: {
   artifactSet: ArtifactSetConfig;
@@ -141,7 +141,7 @@ function ArtifactChoiceHoverIcon({
   return <ItemIcon halfSetIds={artifactSet.halfSetIds} size="sm" />;
 }
 
-function ArtifactChoiceRowIcon({
+export function ArtifactChoiceRowIcon({
   artifactSet,
   label,
 }: {
@@ -174,6 +174,8 @@ function ArtifactChoiceRowIcon({
   );
 }
 
+export type BuildComparisonMode = "weapon" | "artifact" | "teamSets";
+
 interface WeaponChoiceResultCardProps {
   teamComp: TeamComp;
   setupConfig: TeamSetupConfig;
@@ -193,24 +195,28 @@ interface WeaponChoiceResultCardProps {
   ) => void;
   charIds: string[];
   isComputing: boolean;
-  choiceMode: "weapon" | "artifact";
+  choiceMode: BuildComparisonMode;
   result: WeaponChoiceResult | null;
   progress?: WeaponChoiceProgress;
   error: Error | null;
   onRun: () => void;
   runDisabled?: boolean;
   ownedWeaponsOnly?: boolean;
-  onChoiceModeChange?: (mode: "weapon" | "artifact") => void;
+  onChoiceModeChange?: (mode: BuildComparisonMode) => void;
   onOwnedWeaponsOnlyChange?: (owned: boolean) => void;
   hasAccount?: boolean;
   hasOwnedCompatibleWeapons?: boolean;
   onStop: () => void;
+  /** Mode-specific settings shown in the shared settings row. */
+  modeControls?: ReactNode;
+  /** Progress and results of the team-sets mode. */
+  modeBody?: ReactNode;
   t: ReturnType<typeof useLanguage>["t"];
 }
 
 // ─── Character panel header (reused across all states) ───
 
-function CharPanelHeader({
+export function CharPanelHeader({
   charId,
   t,
 }: {
@@ -770,6 +776,8 @@ export function WeaponChoiceResultCard({
   hasAccount = false,
   hasOwnedCompatibleWeapons = false,
   onStop,
+  modeControls,
+  modeBody,
   t,
 }: WeaponChoiceResultCardProps) {
   const ownedToggleId = useId();
@@ -854,6 +862,13 @@ export function WeaponChoiceResultCard({
             title={t.ui("teamComp.choiceModeArtifact")}
           />
         </OptionButtonCell>
+        <OptionButtonCell>
+          <OptionButton
+            selected={choiceMode === "teamSets"}
+            onClick={() => onChoiceModeChange?.("teamSets")}
+            title={t.ui("teamComp.choiceModeTeamSets")}
+          />
+        </OptionButtonCell>
       </OptionButtonRow>
       <CardContent className={cn(CARD_BODY_CLS, "space-y-2")}>
         <div className="space-y-2">
@@ -911,6 +926,7 @@ export function WeaponChoiceResultCard({
                 {t.ui("teamComp.ownedWeaponComparison")}
               </label>
             )}
+            {modeControls}
             {hasStellarConduct && (
               <StellarDirectCoeffInput
                 stellarAttachHits={ctx.stellarAttachHits}
@@ -962,7 +978,7 @@ export function WeaponChoiceResultCard({
           )}
 
         {/* Progress chips with ring spinners */}
-        {isComputing && (
+        {choiceMode !== "teamSets" && isComputing && (
           <div className="space-y-1.5">
             <Progress
               value={Math.round((progress?.overallProgress ?? 0) * 100)}
@@ -1052,8 +1068,11 @@ export function WeaponChoiceResultCard({
             />
           )}
 
+        {choiceMode === "teamSets" && modeBody}
+
         {/* Keep results below settings once a comparison starts. */}
-        {(isComputing || result) &&
+        {choiceMode !== "teamSets" &&
+          (isComputing || result) &&
           (charIds.length > 0 ? (
             <TeamCharacterGrid className="gap-2">
               {charIds.map((charId) => {

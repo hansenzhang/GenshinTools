@@ -185,7 +185,7 @@ function valueCls(primary: "on" | "off" | "both", which: "off" | "on"): string {
 }
 
 /** Format an OptFailReason into a short user-facing string. */
-function formatFailReason(
+export function formatFailReason(
   reason: OptFailReason,
   t: ReturnType<typeof useLanguage>["t"]
 ): string {

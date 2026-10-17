@@ -2180,6 +2180,54 @@ export const i18nUiData = {
       en: "No compatible artifact sets",
       zh: "无匹配圣遗物套装",
     },
+    choiceModeTeamSets: { en: "Team sets", zh: "全队套装" },
+    teamSetsOwnedArtifacts: { en: "Owned artifacts", zh: "已拥有圣遗物" },
+    teamSetsNeedsAccount: {
+      en: "Import game account data to compare sets with your artifacts.",
+      zh: "导入游戏账号数据后可用已拥有圣遗物比较套装。",
+    },
+    teamSetsKeepSet: { en: "Keep set", zh: "锁定套装" },
+    teamSetsBest: { en: "Best set assignment", zh: "最佳套装分配" },
+    teamSetsVsCurrent: { en: "vs current", zh: "较当前" },
+    teamSetsCurrentBest: {
+      en: "Current sets are already best",
+      zh: "当前套装已是最佳",
+    },
+    teamSetsEstimate: {
+      en: "Ideal-artifact estimate",
+      zh: "理想圣遗物估算",
+    },
+    teamSetsUnreachable: { en: "Not reachable", zh: "无法达成" },
+    teamSetsRequirementUnmet: {
+      en: "Below the ER or CRIT Rate requirement",
+      zh: "未达到充能或暴击要求",
+    },
+    teamSetsRealized: { en: "Pieces found form", zh: "实际凑成" },
+    teamSetsTeammates: { en: "Teammates' sets", zh: "队友套装" },
+    teamSetsPin: { en: "Always compare", zh: "始终比较" },
+    teamSetsUnpin: { en: "Stop always comparing", zh: "取消始终比较" },
+    teamSetsPinHint: {
+      en: "Run again to compare this on your artifacts.",
+      zh: "重新运行后会用已拥有圣遗物比较此方案。",
+    },
+    teamSetsOverridesReset: {
+      en: "Buff settings tied to a set's previous wearer return to default after applying.",
+      zh: "应用后，跟随原佩戴者的增益设置会恢复默认。",
+    },
+    teamSetsStageScreen: { en: "Screening sets", zh: "筛选套装" },
+    teamSetsStageJoint: { en: "Combining sets", zh: "组合套装" },
+    teamSetsStageGenerate: {
+      en: "Fitting ideal artifacts",
+      zh: "生成理想圣遗物",
+    },
+    teamSetsStageOptimize: {
+      en: "Optimizing owned artifacts",
+      zh: "用已拥有圣遗物优化",
+    },
+    teamSetsNoMembers: {
+      en: "Choose a weapon for each team member first.",
+      zh: "请先为每位队员选择武器。",
+    },
   },
   filters: {
     title: { en: "Filters", zh: "过滤" },

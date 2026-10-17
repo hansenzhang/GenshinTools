@@ -1471,6 +1471,8 @@ export function AnalysisWorkspace({
               teamBuild={teamBuild}
               configs={configs}
               objectiveCombo={displayCombo}
+              optimizeContext={activeContext}
+              displayContext={displayContext}
             />
           </TabsContent>
           <TabsContent
