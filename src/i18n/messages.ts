@@ -1809,6 +1809,7 @@ export const i18nUiData = {
     },
     enemyLevel: { en: "Enemy Lv.", zh: "怪物等级" },
     enemyRes: { en: "Enemy RES", zh: "怪物抗性" },
+    enemyResByElement: { en: "RES by element", zh: "分元素抗性" },
     critRateTarget: { en: "Max.CR (soft cap)", zh: "最高暴击（凹分）" },
     tierPool: {
       en: "Avoid stealing from higher tiers",

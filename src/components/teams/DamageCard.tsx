@@ -69,6 +69,10 @@ import type {
   TeamOptimizationResult,
   TeamSetupConfig,
 } from "@/domain/team/types";
+import {
+  numericInputFilter,
+  useDeferredTextInput,
+} from "@/hooks/useDeferredTextInput";
 import { getAssetUrl } from "@/lib/assets/urls.ts";
 import { cn } from "@/lib/utils";
 import type { BuffLedgerFormula } from "./BuffDialog";
@@ -1290,6 +1294,10 @@ function EnemyFields({
         const num = Number(raw);
         if (!Number.isNaN(num)) onCalcContextChange({ enemyRes: num / 100 });
       }}
+      enemyResByElement={calcContext?.enemyResByElement}
+      onEnemyResByElementChange={(next) =>
+        onCalcContextChange({ enemyResByElement: next })
+      }
       t={t}
     />
   );
@@ -1375,6 +1383,9 @@ function DpsDisplay({
   isMobile: boolean;
   t: ReturnType<typeof useLanguage>["t"];
 }) {
+  const seconds = useDeferredTextInput(dpsSeconds, setDpsSeconds, {
+    filter: numericInputFilter,
+  });
   const sec = Number(dpsSeconds);
   const hasDps = dpsSeconds !== "" && sec > 0 && totalDamage > 0;
   const textCls = isMobile ? "text-xs" : "text-sm";
@@ -1387,12 +1398,11 @@ function DpsDisplay({
       <Input
         type="text"
         inputMode="numeric"
-        value={dpsSeconds}
+        value={seconds.value}
         placeholder="—"
-        onChange={(e) => {
-          const raw = e.target.value.trim();
-          if (raw === "" || /^\d*\.?\d*$/.test(raw)) setDpsSeconds(raw);
-        }}
+        onChange={seconds.onChange}
+        onBlur={seconds.onBlur}
+        onKeyDown={seconds.onKeyDown}
         className={cn(
           "text-center font-bold border-foreground/25 bg-white/5 focus-visible:ring-1 focus-visible:ring-primary/40 focus-visible:ring-offset-0 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none",
           isMobile
@@ -1687,8 +1697,27 @@ export function DamageCard({
   const hasStellarConduct =
     teamBuild?.teamMeta.hasReaction("stellarConduct") ?? false;
 
-  // DPS calculator state (per-session)
-  const [dpsSeconds, setDpsSeconds] = useSessionState("dpsSeconds", "");
+  // Saved rotation length; rotation damage ÷ seconds gives DPS.
+  const dpsSeconds =
+    damageConfig.rotationSeconds != null
+      ? String(damageConfig.rotationSeconds)
+      : "";
+  const setDpsSeconds = useCallback(
+    (raw: string) => {
+      const seconds = Number(raw);
+      onSetupConfigChange((config) => {
+        const { rotationSeconds: _, ...damage } = config.damage ?? {};
+        return {
+          ...config,
+          damage:
+            raw !== "" && seconds > 0
+              ? { ...damage, rotationSeconds: seconds }
+              : damage,
+        };
+      });
+    },
+    [onSetupConfigChange]
+  );
 
   // Current tab's total damage for comparison in optimize tab
   const currentTotal = useMemo(() => {

@@ -84,7 +84,10 @@ import {
   resolveSelectedFormula,
   toStatSheets,
 } from "@/domain/team/teamConfigUtils";
-import { teamCompToArrays } from "@/domain/team/teamDeltas";
+import {
+  teamCalculationInputs,
+  teamCompToArrays,
+} from "@/domain/team/teamDeltas";
 import type {
   CharOptConfig,
   TeamComp,
@@ -1109,7 +1112,7 @@ export function AnalysisWorkspace({
   // Freeze a character's equipped artifacts from the current tab
   const calculationInputKey = JSON.stringify({
     configs,
-    damageConfig,
+    damageConfig: teamCalculationInputs(setupConfig).damage,
     combatOptions,
     charConfigs,
     optimizerBuildMatchByChar,

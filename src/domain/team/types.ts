@@ -231,6 +231,9 @@ export interface TeamDamageConfig {
   singleForceOnField?: boolean;
   formulaMode?: "single" | "combo";
   combo?: ComboFormula | null;
+  /** Seconds one rotation takes; rotation damage ÷ this is the team's DPS.
+   *  Display and lineup input only: calculated damage does not depend on it. */
+  rotationSeconds?: number;
 }
 
 export interface TeamEnergyConfig {

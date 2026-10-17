@@ -15,6 +15,12 @@ export const numericInputFilter = (raw: string): string => {
   );
 };
 
+/** Like `numericInputFilter`, but keeps one leading minus sign. */
+export const signedNumericInputFilter = (raw: string): string => {
+  const digits = numericInputFilter(raw);
+  return raw.trimStart().startsWith("-") ? `-${digits}` : digits;
+};
+
 /**
  * Decouples a text input's display state from a heavy commit handler so
  * typing stays responsive even when committing the value triggers expensive

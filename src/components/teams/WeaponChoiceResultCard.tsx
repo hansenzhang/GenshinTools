@@ -897,6 +897,10 @@ export function WeaponChoiceResultCard({
                 const num = Number(raw);
                 if (!Number.isNaN(num)) patchCtx({ enemyRes: num / 100 });
               }}
+              enemyResByElement={ctx.enemyResByElement}
+              onEnemyResByElementChange={(next) =>
+                patchCtx({ enemyResByElement: next })
+              }
               t={t}
             />
             <RollQualityInputs

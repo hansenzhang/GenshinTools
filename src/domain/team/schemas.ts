@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { ELEMENT_KEYS } from "@/domain/enums";
 
 export const ArtifactSetConfigSchema = z.discriminatedUnion("type", [
   z.object({ type: z.literal("4pc"), setId: z.string() }),
@@ -19,3 +20,9 @@ export const TeamSlotConfigSchema = z.object({
     .object({ auto: z.number(), skill: z.number(), burst: z.number() })
     .optional(),
 });
+
+/** Per-element enemy base RES as fractions (0.1 = 10%). */
+export const EnemyResByElementSchema = z.partialRecord(
+  z.enum(ELEMENT_KEYS),
+  z.number().finite()
+);

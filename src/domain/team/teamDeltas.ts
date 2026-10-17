@@ -213,6 +213,17 @@ export function normalizeTeamSetupConfig(
   };
 }
 
+/** The parts of a team setup that calculated results depend on. Rotation
+ *  length only turns rotation damage into DPS, so it is left out and
+ *  changing it keeps optimizer and comparison results valid. */
+export function teamCalculationInputs(
+  config: Partial<TeamSetupConfig> = {}
+): TeamSetupConfig {
+  const { damage, ...rest } = normalizeTeamSetupConfig(config);
+  const { rotationSeconds: _, ...inputs } = damage ?? {};
+  return Object.keys(inputs).length > 0 ? { ...rest, damage: inputs } : rest;
+}
+
 function hasMeaningfulConfigValue(value: unknown): boolean {
   if (value == null) return false;
   if (Array.isArray(value)) return value.length > 0;

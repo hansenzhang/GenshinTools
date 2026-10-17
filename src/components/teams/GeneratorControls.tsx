@@ -1,5 +1,12 @@
+import { SlidersHorizontal } from "lucide-react";
+import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
 import {
   Select,
   SelectContent,
@@ -10,6 +17,7 @@ import {
 import { Slider } from "@/components/ui/slider";
 import type { useLanguage } from "@/contexts/LanguageContext";
 import {
+  DEFAULT_CALC_CONTEXT,
   STELLAR_ATTACH_HITS_DEFAULT,
   STELLAR_ATTACH_HITS_MAX,
   STELLAR_ATTACH_HITS_MIN,
@@ -28,6 +36,7 @@ import {
 } from "@/hooks/useDeferredTextInput";
 import { getAssetUrl } from "@/lib/assets/urls.ts";
 import { cn } from "@/lib/utils";
+import { ElementResInputs, type ElementResValues } from "./ElementResInputs";
 import { TeamCharacterGrid } from "./TeamCharacterGrid";
 
 const LABEL_CLS =
@@ -49,6 +58,9 @@ type EnemyInputsProps = {
   onEnemyLevelChange: (raw: string) => void;
   enemyRes: number | string;
   onEnemyResChange: (raw: string) => void;
+  /** Per-element RES overrides; shown as a popover when a handler is given. */
+  enemyResByElement?: ElementResValues;
+  onEnemyResByElementChange?: (next: ElementResValues | undefined) => void;
   t: ReturnType<typeof useLanguage>["t"];
 };
 
@@ -57,6 +69,8 @@ export function EnemyInputs({
   onEnemyLevelChange,
   enemyRes,
   onEnemyResChange,
+  enemyResByElement,
+  onEnemyResByElementChange,
   t,
 }: EnemyInputsProps) {
   const lvl = useDeferredTextInput(
@@ -98,9 +112,80 @@ export function EnemyInputs({
           <span className="font-bold text-muted-foreground text-[10px] md:text-xs">
             %
           </span>
+          {onEnemyResByElementChange && (
+            <EnemyResByElementPopover
+              values={enemyResByElement ?? {}}
+              fallback={
+                enemyRes === "" || !Number.isFinite(Number(enemyRes))
+                  ? DEFAULT_CALC_CONTEXT.enemyRes
+                  : Number(enemyRes) / 100
+              }
+              onChange={onEnemyResByElementChange}
+              t={t}
+            />
+          )}
         </div>
       </div>
     </>
+  );
+}
+
+function EnemyResByElementPopover({
+  values,
+  fallback,
+  onChange,
+  t,
+}: {
+  values: ElementResValues;
+  fallback: number;
+  onChange: (next: ElementResValues | undefined) => void;
+  t: ReturnType<typeof useLanguage>["t"];
+}) {
+  const count = Object.keys(values).length;
+  const label = t.ui("teamComp.enemyResByElement");
+  return (
+    <Popover>
+      <PopoverTrigger asChild>
+        <Button
+          variant="ghost"
+          size="sm"
+          title={label}
+          aria-label={label}
+          className={cn(
+            "ml-0.5 h-6 gap-0.5 px-1 text-xs md:h-7",
+            count > 0 && "text-primary"
+          )}
+        >
+          <SlidersHorizontal className="h-3.5 w-3.5" />
+          {count > 0 && <span className="font-bold">{count}</span>}
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent
+        align="start"
+        className="w-auto max-w-[calc(100vw-2rem)] p-2"
+      >
+        <div className="mb-1.5 flex min-h-7 items-center justify-between gap-2">
+          <span className="text-sm font-semibold">{label}</span>
+          {count > 0 && (
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-7 px-2 text-xs"
+              onClick={() => onChange(undefined)}
+            >
+              {t.ui("common.reset")}
+            </Button>
+          )}
+        </div>
+        <ElementResInputs
+          values={values}
+          fallback={fallback}
+          onChange={(next) =>
+            onChange(Object.keys(next).length > 0 ? next : undefined)
+          }
+        />
+      </PopoverContent>
+    </Popover>
   );
 }
 

@@ -17,7 +17,10 @@ import { DEFAULT_SCORE_UP_SETTINGS } from "@/domain/game-account/scoreUpSettings
 import { DEFAULT_TRIAGE_SETTINGS } from "@/domain/game-account/triage/constants";
 import { inferTriageBackupAmountMode } from "@/domain/game-account/triage/settings";
 import type { GlobalStatWeights } from "@/domain/models";
-import { ArtifactSetConfigSchema } from "@/domain/team/schemas";
+import {
+  ArtifactSetConfigSchema,
+  EnemyResByElementSchema,
+} from "@/domain/team/schemas";
 import { migrateBundledPresetId } from "@/stores/migration/presetIds";
 
 export const DEFAULT_GLOBAL_STAT_WEIGHTS: GlobalStatWeights = {
@@ -284,7 +287,12 @@ const TeamCharConfigSchema = z
 
 const TeamDamageConfigSchema = z
   .object({
-    calcContext: z.record(z.string(), z.unknown()).optional(),
+    calcContext: z
+      .object({
+        enemyResByElement: EnemyResByElementSchema.optional().catch(undefined),
+      })
+      .loose()
+      .optional(),
     enemyAura: z.string().optional(),
     extraBuffs: z.array(z.unknown()).optional(),
     selectedFormula: z
@@ -298,6 +306,7 @@ const TeamDamageConfigSchema = z
     singleForceOnField: z.boolean().optional(),
     formulaMode: z.enum(["single", "combo"]).optional(),
     combo: z.unknown().nullable().optional(),
+    rotationSeconds: z.number().finite().positive().optional().catch(undefined),
   })
   .loose();
 

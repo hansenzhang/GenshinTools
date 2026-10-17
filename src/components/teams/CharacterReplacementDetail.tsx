@@ -579,6 +579,10 @@ export function CharacterReplacementDetail({
               if (Number.isFinite(value))
                 updateContext({ enemyRes: value / 100 });
             }}
+            enemyResByElement={calcContext.enemyResByElement}
+            onEnemyResByElementChange={(next) =>
+              updateContext({ enemyResByElement: next })
+            }
             t={t}
           />
           <RollQualityInputs

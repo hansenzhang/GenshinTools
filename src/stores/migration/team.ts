@@ -617,6 +617,11 @@ export function migrateTeamStore(
   // v24 adds optional absoluteCountTargets for future constellation counts.
   // v23 delta/exact maps are retained verbatim; absent targets stay absent.
   // No defaults are copied into authored data at this migration boundary.
+  // v25 adds optional damage.rotationSeconds (was session-only display state)
+  // and damage.calcContext.enemyResByElement. v24 damage configs had neither:
+  //   damage: { calcContext?: { enemyLevel?, enemyRes?, ... }, combo?, ... }
+  // Absent values keep their meaning (no saved rotation length; every element
+  // uses enemyRes), so nothing is synthesized here.
 
   delete state.teams;
   return state;

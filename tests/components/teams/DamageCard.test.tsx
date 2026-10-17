@@ -5,7 +5,10 @@ import {
   DamageCard,
   DpsDisplay,
 } from "@/components/teams/DamageCard";
-import { CharCrErSettings } from "@/components/teams/GeneratorControls";
+import {
+  CharCrErSettings,
+  EnemyInputs,
+} from "@/components/teams/GeneratorControls";
 import { useLanguage } from "@/contexts/LanguageContext";
 import type { CalcContext } from "@/domain/combat/damage/types";
 import type { TierAssignment } from "@/domain/models";
@@ -386,6 +389,65 @@ describe("DpsDisplay", () => {
     render(<TestDpsDisplay totalDamage={100000} dpsSeconds="" />);
     // Should not have the "= X/s" text
     expect(screen.queryByText(/=/)).not.toBeInTheDocument();
+  });
+
+  it("saves the rotation length once, when the input is committed", async () => {
+    const user = userEvent.setup();
+    const setDpsSeconds = vi.fn();
+    render(<TestDpsDisplay setDpsSeconds={setDpsSeconds} />);
+    const input = screen.getByPlaceholderText("—");
+    await user.type(input, "12.5s");
+    expect(setDpsSeconds).not.toHaveBeenCalled();
+    await user.keyboard("{Enter}");
+    expect(setDpsSeconds).toHaveBeenCalledOnce();
+    expect(setDpsSeconds).toHaveBeenCalledWith("12.5");
+  });
+});
+
+// ─── EnemyInputs ───
+
+describe("EnemyInputs per-element RES", () => {
+  function TestEnemyInputs(props: Partial<ComponentProps<typeof EnemyInputs>>) {
+    const { t } = useLanguage();
+    return (
+      <EnemyInputs
+        enemyLevel={100}
+        onEnemyLevelChange={vi.fn()}
+        enemyRes={10}
+        onEnemyResChange={vi.fn()}
+        t={t}
+        {...props}
+      />
+    );
+  }
+
+  it("is hidden without a per-element handler", () => {
+    render(<TestEnemyInputs />);
+    expect(
+      screen.queryByRole("button", { name: "RES by element" })
+    ).not.toBeInTheDocument();
+  });
+
+  it("edits one element on top of the shared RES and resets all", async () => {
+    const user = userEvent.setup();
+    const onChange = vi.fn();
+    const { rerender } = render(
+      <TestEnemyInputs onEnemyResByElementChange={onChange} />
+    );
+    await user.click(screen.getByRole("button", { name: "RES by element" }));
+    const pyro = screen.getByRole("textbox", { name: "Pyro RES" });
+    expect(pyro).toHaveAttribute("placeholder", "10");
+    await user.type(pyro, "-20{Enter}");
+    expect(onChange).toHaveBeenLastCalledWith({ Pyro: -0.2 });
+
+    rerender(
+      <TestEnemyInputs
+        enemyResByElement={{ Pyro: -0.2 }}
+        onEnemyResByElementChange={onChange}
+      />
+    );
+    await user.click(screen.getByRole("button", { name: "Reset" }));
+    expect(onChange).toHaveBeenLastCalledWith(undefined);
   });
 });
 
