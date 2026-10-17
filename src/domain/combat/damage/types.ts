@@ -419,7 +419,10 @@ export type CritMode = "expected" | "crit" | "noCrit";
  */
 export type CalcContext = {
   enemyLevel: number;
+  /** Base RES (fraction) for every element without its own entry below. */
   enemyRes: number;
+  /** Per-element base RES (fraction). Missing elements use `enemyRes`. */
+  enemyResByElement?: Partial<Record<ElementalOrPhysical, number>>;
   perCharCrTarget?: Record<string, number>; // charId → 0-100 integer; per-char CR targets
   rollMultiplier: number; // 0.7–1.0
   substatBudget: SubstatBudgetPreset;

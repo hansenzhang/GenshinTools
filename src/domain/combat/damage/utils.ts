@@ -1,3 +1,4 @@
+import type { ElementalOrPhysical } from "@/domain/enums";
 import type { ArtifactSetConfig } from "@/domain/models";
 import {
   DEFAULT_CALC_CONTEXT,
@@ -25,6 +26,14 @@ export function filterMatchesTag(
 
 export function resolveCalcContext(ctx?: Partial<CalcContext>): CalcContext {
   return { ...DEFAULT_CALC_CONTEXT, ...ctx };
+}
+
+/** Enemy base RES against one damage element, before RES shred. */
+export function resolveEnemyRes(
+  ctx: CalcContext,
+  element: ElementalOrPhysical
+): number {
+  return ctx.enemyResByElement?.[element] ?? ctx.enemyRes;
 }
 
 /** Datamine coeff for a Polestar Field attach hit count (clamped to table). */

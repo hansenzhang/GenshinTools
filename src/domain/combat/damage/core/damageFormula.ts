@@ -2,6 +2,7 @@ import type { ReactionType, StatKey } from "@/domain/enums";
 import { STELLAR_REACTIONS } from "../constants";
 import type { CalcContext, DamageTag, DisplayPart } from "../types";
 import {
+  resolveEnemyRes,
   resolvePolestarElementDmgBonus,
   resolveStellarAttachHits,
   resolveStellarDirectCoeff,
@@ -232,7 +233,7 @@ export abstract class DamageFormula {
 
   protected computeResMult(stats: StatSheet, ctx: CalcContext): number {
     const resReduction = stats.get("resReduction%", this.tag);
-    const effectiveRes = ctx.enemyRes - resReduction;
+    const effectiveRes = resolveEnemyRes(ctx, this.tag.element) - resReduction;
 
     if (effectiveRes < 0) {
       return 1 - effectiveRes / 2;
@@ -318,20 +319,18 @@ export abstract class DamageFormula {
 
   protected computeResMultExpr(stats: ExprStatSheet, ctx: CalcContext): Expr {
     const resReduction = stats.get("resReduction%", this.tag);
+    const enemyRes = resolveEnemyRes(ctx, this.tag.element);
     // resReduction% is almost always a constant (team buff, not artifact stat).
     // Resolve the 3-way branch at compile time if possible.
     if (resReduction.tag === "const") {
-      const effectiveRes = ctx.enemyRes - resReduction.value;
+      const effectiveRes = enemyRes - resReduction.value;
       if (effectiveRes < 0) return E.const(1 - effectiveRes / 2);
       if (effectiveRes <= 0.75) return E.const(1 - effectiveRes);
       return E.const(1 / (1 + 4 * effectiveRes));
     }
     // Variable case (rare): build piecewise with min/max
     // effectiveRes = enemyRes - resReduction
-    const effRes = E.add(
-      E.const(ctx.enemyRes),
-      E.mul(E.const(-1), resReduction)
-    );
+    const effRes = E.add(E.const(enemyRes), E.mul(E.const(-1), resReduction));
     // Use the middle branch (1 - effectiveRes) as the most common case
     // This is a simplification; for full piecewise we'd need conditional nodes.
     // In practice, resReduction is always constant.
@@ -514,7 +513,7 @@ export class DirectFormula extends DamageFormula {
       params: {
         charLevel,
         enemyLevel: ctx.enemyLevel,
-        enemyRes: ctx.enemyRes,
+        enemyRes: resolveEnemyRes(ctx, this.tag.element),
       },
       scalingKeys: keys,
       scalingMulti: multi,
@@ -767,7 +766,7 @@ export class CatalyzeFormula extends DamageFormula {
         emDenom,
         charLevel,
         enemyLevel: ctx.enemyLevel,
-        enemyRes: ctx.enemyRes,
+        enemyRes: resolveEnemyRes(ctx, this.tag.element),
       },
       scalingKeys: keys,
       scalingMulti: multi,
@@ -885,7 +884,7 @@ export class TransformFormula extends DamageFormula {
         emDenom,
         charLevel,
         enemyLevel: ctx.enemyLevel,
-        enemyRes: ctx.enemyRes,
+        enemyRes: resolveEnemyRes(ctx, this.tag.element),
       },
       scalingKeys: [],
       scalingMulti: [],
@@ -1043,7 +1042,7 @@ export class LunarFormula extends DamageFormula {
       emDenom,
       charLevel,
       enemyLevel: ctx.enemyLevel,
-      enemyRes: ctx.enemyRes,
+      enemyRes: resolveEnemyRes(ctx, this.tag.element),
     };
     if (this.rankWeight !== 1) params.rankWeight = this.rankWeight;
 
@@ -1224,7 +1223,7 @@ export class LunarDirectFormula extends DamageFormula {
         emDenom,
         charLevel,
         enemyLevel: ctx.enemyLevel,
-        enemyRes: ctx.enemyRes,
+        enemyRes: resolveEnemyRes(ctx, this.tag.element),
       },
       scalingKeys: keys,
       scalingMulti: multi,
@@ -1334,7 +1333,7 @@ export class StellarFormula extends DamageFormula {
       emDenom,
       charLevel,
       enemyLevel: ctx.enemyLevel,
-      enemyRes: ctx.enemyRes,
+      enemyRes: resolveEnemyRes(ctx, this.tag.element),
     };
     if (this.rankWeight !== 1) params.rankWeight = this.rankWeight;
     const statValues: Partial<Record<StatKey, number>> = {
@@ -1526,7 +1525,7 @@ export class StellarDirectFormula extends DamageFormula {
         emDenom,
         charLevel,
         enemyLevel: ctx.enemyLevel,
-        enemyRes: ctx.enemyRes,
+        enemyRes: resolveEnemyRes(ctx, this.tag.element),
       },
       scalingKeys: keys,
       scalingMulti: multi,

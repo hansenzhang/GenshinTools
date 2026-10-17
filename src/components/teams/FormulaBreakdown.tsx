@@ -577,7 +577,7 @@ function CommonMultipliers({
   const defIgnore = p.statValues["defIgnore%"] || 0;
 
   const resReduc = p.statValues["resReduction%"] || 0;
-  const enemyRes = p.params.enemyRes || 0.1;
+  const enemyRes = p.params.enemyRes ?? 0.1;
   const effRes = enemyRes - resReduc;
 
   let resMult = 1;

@@ -154,6 +154,7 @@ export class TeamBuild {
     this.baselineCtx = {
       enemyLevel: baselineCtx?.enemyLevel ?? 110,
       enemyRes: baselineCtx?.enemyRes ?? 0.1,
+      enemyResByElement: baselineCtx?.enemyResByElement,
       rollMultiplier: baselineCtx?.rollMultiplier ?? 0.85,
       substatBudget: baselineCtx?.substatBudget ?? "8_6",
       stellarAttachHits: baselineCtx?.stellarAttachHits,
