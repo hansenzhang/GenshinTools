@@ -8,7 +8,6 @@ export type EncounterMode = "abyss" | "stygian";
 
 interface EncounterBase {
   id: string;
-  name: string;
   enemyLevel: number;
   /** Base RES per element as fractions (0.1 = 10%). Missing elements use
    *  DEFAULT_ENCOUNTER_RES. */
@@ -34,7 +33,7 @@ export interface AbyssEncounter extends EncounterBase {
 export interface StygianEncounter extends EncounterBase {
   mode: "stygian";
   /** Boss in the Stygian Onslaught archive the level and RES came from. */
-  bossId: number | null;
+  bossId: number;
 }
 
 export type Encounter = AbyssEncounter | StygianEncounter;
@@ -52,7 +51,6 @@ export type CompositionRule =
  */
 export interface TeamTemplate {
   id: string;
-  name: string;
   teamId: string;
   /** Alternatives per team slot (index 0–3), in addition to the team's own
    *  character in that slot. Slots without alternatives are core. */

@@ -26,10 +26,11 @@ import { useTeamStore } from "@/stores/useTeamStore";
 import { AnalysisView } from "./AnalysisView";
 import type { FrozenViewHandle } from "./FrozenView";
 import { FrozenView } from "./FrozenView";
+import { LineupsView } from "./LineupsView";
 
-type TeamCompTab = "analysis" | "loadouts";
+type TeamCompTab = "analysis" | "loadouts" | "lineups";
 function isValidTab(tab: string | null): tab is TeamCompTab {
-  return tab === "analysis" || tab === "loadouts";
+  return tab === "analysis" || tab === "loadouts" || tab === "lineups";
 }
 
 export default function TeamCompPage() {
@@ -171,7 +172,7 @@ export default function TeamCompPage() {
                 onTrigger: () => tour.start("team-comp"),
               },
             ]
-          : Object.keys(frozenTeams).length > 0
+          : activeTab === "loadouts" && Object.keys(frozenTeams).length > 0
             ? [
                 {
                   key: "download-loadouts",
@@ -191,11 +192,18 @@ export default function TeamCompPage() {
         <AnalysisView importRef={importRef} active={showAnalysis} />
       </div>
       <div
-        hidden={showAnalysis}
-        className={showAnalysis ? "hidden" : "flex min-h-0 flex-1 flex-col"}
+        hidden={activeTab !== "loadouts"}
+        className={
+          activeTab === "loadouts" ? "flex min-h-0 flex-1 flex-col" : "hidden"
+        }
       >
         <FrozenView ref={frozenViewRef} />
       </div>
+      {activeTab === "lineups" && (
+        <div className="flex min-h-0 flex-1 flex-col">
+          <LineupsView />
+        </div>
+      )}
     </PageLayout>
   );
 }

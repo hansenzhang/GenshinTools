@@ -136,7 +136,6 @@ describe("lineup store", () => {
             {
               id: "e2",
               mode: "stygian",
-              name: "Boss",
               bossId: 10011,
               enemyLevel: 105,
               res: { Cryo: 0.5 },

@@ -145,13 +145,9 @@ describe("calibrated margin", () => {
 });
 
 describe("team templates", () => {
-  it("starts with the team's name and no flex slots", () => {
+  it("starts with the team's characters and no flex slots", () => {
     const template = createTeamTemplate("template-1", team);
-    expect(template).toMatchObject({
-      name: "Neuvillette",
-      teamId: "team-1",
-      rules: [],
-    });
+    expect(template).toMatchObject({ teamId: "team-1", rules: [] });
     expect(templateCompositions(template, team, traits)).toEqual([
       ["neuvillette", "furina", "kazuha", "zhongli"],
     ]);

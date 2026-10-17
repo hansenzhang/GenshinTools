@@ -62,6 +62,7 @@ import type {
 import { charactersById } from "@/domain/reference/catalog";
 import { fmtDamage } from "@/domain/team/displayFormatter";
 import { toStatSheets } from "@/domain/team/teamConfigUtils";
+import { withRotationSeconds } from "@/domain/team/teamDeltas";
 import type {
   OptFailReason,
   TeamComp,
@@ -1703,19 +1704,10 @@ export function DamageCard({
       ? String(damageConfig.rotationSeconds)
       : "";
   const setDpsSeconds = useCallback(
-    (raw: string) => {
-      const seconds = Number(raw);
-      onSetupConfigChange((config) => {
-        const { rotationSeconds: _, ...damage } = config.damage ?? {};
-        return {
-          ...config,
-          damage:
-            raw !== "" && seconds > 0
-              ? { ...damage, rotationSeconds: seconds }
-              : damage,
-        };
-      });
-    },
+    (raw: string) =>
+      onSetupConfigChange((config) =>
+        withRotationSeconds(config, raw === "" ? null : Number(raw))
+      ),
     [onSetupConfigChange]
   );
 

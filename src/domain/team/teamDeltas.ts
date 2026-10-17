@@ -224,6 +224,22 @@ export function teamCalculationInputs(
   return Object.keys(inputs).length > 0 ? { ...rest, damage: inputs } : rest;
 }
 
+/** The setup with a saved rotation length; null or a non-positive value
+ *  clears it. */
+export function withRotationSeconds(
+  config: TeamSetupConfig,
+  seconds: number | null
+): TeamSetupConfig {
+  const { rotationSeconds: _, ...damage } = config.damage ?? {};
+  return {
+    ...config,
+    damage:
+      seconds != null && seconds > 0
+        ? { ...damage, rotationSeconds: seconds }
+        : damage,
+  };
+}
+
 function hasMeaningfulConfigValue(value: unknown): boolean {
   if (value == null) return false;
   if (Array.isArray(value)) return value.length > 0;

@@ -1,7 +1,7 @@
 # Lineup solver
 
-Status: decisions and design, 2026-10-16. P1 is implemented as Build comparison › Team sets;
-P0 and P2–P6 are not.
+Status: decisions and design, 2026-10-16. P1 is implemented as Build comparison › Team sets,
+and P0 as Team Comp › Lineups (2026-10-18). P2–P6 are not.
 Source: the feasibility study in `~/mistilteinn/reference/notes/team-solver-study.md`, which
 compares this repo with Genshin Optimizer (GO) and gcsim, and the decisions made with the user
 after it.
@@ -153,6 +153,34 @@ Validate with `npm run check` and `npm run depcheck`.
   That's minutes in a background job. Measure in P2 before tuning screening widths.
 - **Calibration burden.** Assignments the user doesn't play need extra clears, or the model has
   to be trusted across bosses.
+
+## P0 as built (2026-10-18)
+
+- **Per-element RES**: `CalcContext.enemyResByElement`, read through `resolveEnemyRes` for the
+  formula tag's element, the element RES shred already scopes to. Missing elements use
+  `enemyRes`. The enemy settings row in Damage, Builds and Characters has a RES by element
+  popover.
+- **Rotation seconds**: `TeamDamageConfig.rotationSeconds`, saved from the DPS input. It is left
+  out of result-cache and result-reset keys (`teamCalculationInputs`), since it only turns
+  rotation damage into DPS. Team store v25, cloud teams v7.
+- **Models** (`domain/team/lineupTypes.ts`, `lineup.ts`):
+  - Encounters have no names. An Abyss half is labelled by chamber and half; a Stygian
+    encounter references a boss in the Stygian archive, which supplies Fearless level and base
+    RES. `encounterCalcContext` sets all eight elements, so a team's own enemy settings never
+    leak into an encounter.
+  - A template links an Analysis team, which supplies the core, rotation, rotation seconds and
+    settings. The template adds flex alternatives per slot and element or Moonsign rules.
+    `templateCompositions` enumerates what it allows.
+  - A calibration saves the team's current build by value: the Current tab's slot configs plus
+    equipped pieces, so later levelling does not move the reference. There is at most one
+    calibration per (template, encounter). Downtime defaults to the encounter's estimate.
+    `calibratedMargin(r, …)` returns a margin or a reason it cannot (no bar, or downtime ≥ the
+    clear or the bar). The Lineups tab shows the reference margin (`r = 1`).
+- **Persistence**: `lineup-storage` v1. It is device-local, outside cloud backup: adding it needs
+  a new cloud namespace in the Worker. Hydration keeps valid items and drops orphaned
+  calibrations.
+- **Left for P2**: model DPS of the reference build under the encounter context, which gives `r`
+  for candidates.
 
 ## P1 measurements (2026-10-16)
 

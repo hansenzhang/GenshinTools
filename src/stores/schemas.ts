@@ -765,7 +765,6 @@ function validItems<T extends z.ZodType>(schema: T) {
 
 const EncounterFields = {
   id: z.string(),
-  name: z.string().catch(""),
   enemyLevel: z.number().int().min(1).max(200).catch(100),
   res: EnemyResByElementSchema.catch({}),
   targets: z.string().catch(""),
@@ -783,7 +782,7 @@ export const EncounterSchema = z.discriminatedUnion("mode", [
   z.object({
     ...EncounterFields,
     mode: z.literal("stygian"),
-    bossId: z.number().int().nullable().catch(null),
+    bossId: z.number().int(),
   }),
 ]);
 
@@ -801,7 +800,6 @@ const CompositionRuleSchema = z.discriminatedUnion("kind", [
 
 export const TeamTemplateSchema = z.object({
   id: z.string(),
-  name: z.string().catch(""),
   teamId: z.string(),
   flexBySlot: z.array(z.array(z.string())).max(4).catch([[], [], [], []]),
   rules: validItems(CompositionRuleSchema),

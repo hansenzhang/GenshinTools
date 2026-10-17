@@ -6,7 +6,7 @@ import {
   type Faction,
   type Slot,
 } from "@/domain/enums";
-import type { ArtifactData, BossInfo } from "@/domain/models";
+import type { AccountData, ArtifactData, BossInfo } from "@/domain/models";
 import { charactersById } from "@/domain/reference/catalog";
 import {
   type CharacterStatsMap,
@@ -25,8 +25,9 @@ import type {
   TeamTemplate,
   TemplateComposition,
 } from "./lineupTypes";
+import { buildTeamSlotConfigs } from "./teamConfigUtils";
 import { teamCompToArrays } from "./teamDeltas";
-import type { TeamComp } from "./types";
+import type { TeamComp, TeamSetupConfig } from "./types";
 
 // ─── Encounters ───
 
@@ -38,7 +39,6 @@ export function createAbyssEncounter(
   return {
     id,
     mode: "abyss",
-    name: "",
     chamber,
     half,
     enemyLevel: 100,
@@ -65,7 +65,6 @@ export function createStygianEncounter(
   return {
     id,
     mode: "stygian",
-    name: "",
     bossId,
     enemyLevel: tier.level,
     res,
@@ -102,7 +101,6 @@ export function encounterCalcContext(
 export function createTeamTemplate(id: string, team: TeamComp): TeamTemplate {
   return {
     id,
-    name: team.name,
     teamId: team.id,
     flexBySlot: [[], [], [], []],
     rules: [],
@@ -199,6 +197,26 @@ export function captureReferenceBuild(
       ])
     ),
   };
+}
+
+/** The team's current account build, as the Analysis Current tab uses it.
+ *  Null when no member has a weapon to calculate with. */
+export function captureTeamReferenceBuild(
+  team: TeamComp,
+  setupConfig: TeamSetupConfig,
+  accountData: AccountData,
+  capturedAt: number
+): ReferenceBuild | null {
+  const slots = buildTeamSlotConfigs(team, setupConfig, accountData);
+  if (slots.length === 0) return null;
+  const equipped = Object.fromEntries(
+    slots.map(({ charId }) => [
+      charId,
+      accountData.characters.find((character) => character.key === charId)
+        ?.artifacts ?? {},
+    ])
+  );
+  return captureReferenceBuild(slots, equipped, capturedAt);
 }
 
 export function findCalibration(
