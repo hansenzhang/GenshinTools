@@ -145,7 +145,9 @@ describe("selectWitnesses / selectFinalists", () => {
     expect(witnesses).toContain(0);
     expect(witnesses).toContain(1);
     expect(witnesses).toContain(5);
-    expect(witnesses).not.toContain(4);
+    // Ineffa's best 2+2 is covered even below her top choice.
+    expect(witnesses).toContain(3);
+    expect(witnesses).not.toContain(2);
   });
 
   it("moves each team-buff set of the best to another member before runner-ups", () => {

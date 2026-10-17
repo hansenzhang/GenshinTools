@@ -10,7 +10,10 @@
  * Usage:
  *   npx tsx --tsconfig tsconfig.app.json tests/benchmark/setConfigCost.ts \
  *     [--team lunar|sandrone|all] [--reps 40] [--generator-reps 5]
- *     [--account <GOOD.json> --budget-ms 6000 --account-reps 2]
+ *     [--pipeline] [--account <GOOD.json> --budget-ms 6000 --account-reps 2]
+ *
+ * `--pipeline` runs the explorer's screening stages (A–C) end to end and
+ * prints each member's best choices on generated artifacts.
  *
  * `--account` also times one real-inventory finalist (sets enforced) per
  * team. Node has no Worker, so the optimizer runs its inline single-thread
@@ -27,6 +30,10 @@ import type {
   TeamSlotConfig,
 } from "@/domain/combat/damage/types";
 import { runGenerator } from "@/domain/combat/generator/generator";
+import { buildChoiceRows } from "@/domain/combat/lineup/setAssignments";
+import { setChoiceKey } from "@/domain/combat/lineup/setChoices";
+import { runSetConfigScreen } from "@/domain/combat/lineup/setConfigScreen";
+import type { Element } from "@/domain/enums";
 import type { AccountData, ArtifactSetConfig } from "@/domain/models";
 import { getCharacterLevelTier } from "@/domain/reference/stats";
 import type { CharOptConfig } from "@/domain/team/types";
@@ -244,6 +251,79 @@ async function benchTeam(
   );
 }
 
+async function benchPipeline(team: BenchTeam): Promise<void> {
+  console.log(`\n## Pipeline: ${team.name}`);
+  const chars = await characterStatsResource.preload();
+  const configs = buildConfigs(team);
+  const baseTeam = new TeamBuild(configs, {}, undefined, [], undefined, CTX);
+  const combo = buildDefaultCombo(baseTeam);
+  const stageStart: Record<string, number> = {};
+  const stageEnd: Record<string, number> = {};
+  const start = performance.now();
+  const output = await runSetConfigScreen(
+    {
+      configs,
+      combo,
+      combatOptions: {},
+      optimizeContext: CTX,
+      displayContext: CTX,
+      carryCharId: combo.lines[0].charId,
+      requirements: Object.fromEntries(
+        configs.map((config) => [config.charId, { minEr: 1, minCr: 0 }])
+      ),
+      elements: Object.fromEntries(
+        configs.map((config) => [
+          config.charId,
+          chars[config.charId].element as Element,
+        ])
+      ),
+      lockedCharIds: new Set(),
+      pinned: {},
+    },
+    (stage) => {
+      stageStart[stage] ??= performance.now();
+      stageEnd[stage] = performance.now();
+    }
+  );
+  const total = performance.now() - start;
+  if (!output) {
+    console.log("screen failed");
+    return;
+  }
+  const stages = Object.keys(stageStart)
+    .map(
+      (stage) =>
+        `${stage} ${(stageEnd[stage] - stageStart[stage]).toFixed(0)} ms`
+    )
+    .join(", ");
+  console.log(
+    `total ${total.toFixed(0)} ms (${stages}); evaluated ${output.evaluated}, skipped ${output.skipped}, assignments ${output.outcomes.length}`
+  );
+  const generated = output.outcomes.filter(
+    (outcome) => outcome.generatedDamage != null
+  );
+  const best = Math.max(...generated.map((o) => o.generatedDamage ?? 0));
+  const current = output.outcomes[output.currentIndex].generatedDamage ?? 0;
+  console.log(
+    `generated: ${generated.length} assignments, best vs current ${(((best - current) / current) * 100).toFixed(2)}%`
+  );
+  const rows = buildChoiceRows(output.outcomes, output.charIds, {});
+  for (const charId of output.charIds) {
+    const line = rows[charId]
+      .filter((row) => row.basis === "generated")
+      .slice(0, 8)
+      .map((row) => {
+        const outcome = output.outcomes[row.outcomeIndex];
+        const others = output.charIds
+          .filter((id) => id !== charId)
+          .map((id) => `${id}=${setChoiceKey(outcome.assignment[id] ?? null)}`)
+          .join(" ");
+        return `${row.key} ${(((outcome.generatedDamage ?? 0) / best) * 100).toFixed(1)}% [${others}]`;
+      });
+    console.log(`  ${charId}:\n    ${line.join("\n    ")}`);
+  }
+}
+
 function buildAccountConfigs(
   account: AccountData,
   members: [string, ArtifactSetConfig][]
@@ -321,7 +401,10 @@ async function main(): Promise<void> {
       ? Object.values(TEAMS)
       : [TEAMS[teamArg]].filter((team): team is BenchTeam => !!team);
   if (teams.length === 0) throw new Error(`Unknown team: ${teamArg}`);
-  for (const team of teams) await benchTeam(team, reps, generatorReps);
+  for (const team of teams) {
+    if (args.pipeline !== undefined) await benchPipeline(team);
+    else await benchTeam(team, reps, generatorReps);
+  }
 
   if (!args.account) return;
   const account = loadAccountData(args.account);

@@ -177,7 +177,8 @@ function rankedChoiceIndices(
 
 /**
  * Outcomes worth re-scoring with generated artifacts: the best screened
- * assignments, each member's top choices, pinned choices and the current sets.
+ * assignments, each member's top choices and best choice of each shape
+ * (4pc, 2+2), pinned choices and the current sets.
  */
 export function selectWitnesses(input: {
   outcomes: readonly SetAssignmentOutcome[];
@@ -196,13 +197,20 @@ export function selectWitnesses(input: {
     .sort((a, b) => (score(outcomes[b]) ?? 0) - (score(outcomes[a]) ?? 0));
   const selected = new Set<number>([input.currentIndex]);
   for (const index of ranked.slice(0, input.topCount)) selected.add(index);
-  for (const charId of charIds)
-    for (const index of rankedChoiceIndices(
+  for (const charId of charIds) {
+    const byChoice = rankedChoiceIndices(
       outcomes,
       perChoice.get(charId)!,
       score
-    ).slice(0, input.perMember))
-      selected.add(index);
+    );
+    for (const index of byChoice.slice(0, input.perMember)) selected.add(index);
+    for (const shape of ["4pc", "2pc+2pc"] as const) {
+      const index = byChoice.find(
+        (i) => outcomes[i].assignment[charId]?.type === shape
+      );
+      if (index != null) selected.add(index);
+    }
+  }
   for (const index of pinnedOutcomeIndices(perChoice, input.pinned))
     selected.add(index);
   return [...selected];
