@@ -178,7 +178,8 @@ function rankedChoiceIndices(
 /**
  * Outcomes worth re-scoring with generated artifacts: the best screened
  * assignments, each member's top choices and best choice of each shape
- * (4pc, 2+2), pinned choices and the current sets.
+ * (4pc, 2+2), each team-buff set of the best or current assignment on every
+ * member, pinned choices and the current sets.
  */
 export function selectWitnesses(input: {
   outcomes: readonly SetAssignmentOutcome[];
@@ -188,6 +189,7 @@ export function selectWitnesses(input: {
   perMember: number;
   pinned: Readonly<Record<string, readonly ArtifactSetConfig[]>>;
   currentIndex: number;
+  teamBuffSetIds?: ReadonlySet<string>;
 }): number[] {
   const { outcomes, charIds, score } = input;
   const perChoice = bestOutcomePerChoice(outcomes, charIds, score);
@@ -211,6 +213,18 @@ export function selectWitnesses(input: {
       if (index != null) selected.add(index);
     }
   }
+  const carried = new Set<string>();
+  for (const anchor of [ranked[0], input.currentIndex]) {
+    if (anchor == null) continue;
+    for (const choice of Object.values(outcomes[anchor].assignment))
+      if (choice?.type === "4pc" && input.teamBuffSetIds?.has(choice.setId))
+        carried.add(choice.setId);
+  }
+  for (const setId of carried)
+    for (const charId of charIds) {
+      const index = perChoice.get(charId)?.get(setId);
+      if (index != null) selected.add(index);
+    }
   for (const index of pinnedOutcomeIndices(perChoice, input.pinned))
     selected.add(index);
   return [...selected];

@@ -150,6 +150,23 @@ describe("selectWitnesses / selectFinalists", () => {
     expect(witnesses).not.toContain(2);
   });
 
+  it("re-scores each team-buff set of the best on every member", () => {
+    const witnesses = (teamBuffSetIds?: ReadonlySet<string>) =>
+      selectWitnesses({
+        outcomes,
+        charIds: CHARS,
+        score: screen,
+        topCount: 1,
+        perMember: 0,
+        pinned: {},
+        currentIndex: 0,
+        teamBuffSetIds,
+      });
+    // Silken on Sucrose is no member's best choice, but it is a carrier swap.
+    expect(witnesses()).not.toContain(2);
+    expect(witnesses(new Set(["silken_moons_serenade"]))).toContain(2);
+  });
+
   it("moves each team-buff set of the best to another member before runner-ups", () => {
     const finalists = selectFinalists({
       outcomes,

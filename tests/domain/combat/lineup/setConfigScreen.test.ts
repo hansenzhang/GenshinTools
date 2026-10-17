@@ -1,6 +1,6 @@
 import "@/providers/reference/statLoaders";
 import "@/domain/combat/damage/index";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { TeamBuild } from "@/domain/combat/damage/core/teamBuild";
 import type {
   CalcContext,
@@ -19,6 +19,15 @@ import {
   characterStatsResource,
   weaponStatsResource,
 } from "@/domain/reference/stats";
+
+// Fewer generated re-scores keep the suite light; witnesses still cover
+// each member's top choices, shapes and pins.
+vi.mock("@/domain/combat/lineup/constants", async (importOriginal) => ({
+  ...(await importOriginal<
+    typeof import("@/domain/combat/lineup/constants")
+  >()),
+  SET_GENERATED_REFINE_COUNT: 8,
+}));
 
 const [chars] = await Promise.all([
   characterStatsResource.preload(),

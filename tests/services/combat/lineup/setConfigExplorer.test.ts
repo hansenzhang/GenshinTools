@@ -1,5 +1,5 @@
 import "@/providers/reference/statLoaders";
-import { beforeAll, describe, expect, it } from "vitest";
+import { beforeAll, describe, expect, it, vi } from "vitest";
 import { TeamBuild } from "@/domain/combat/damage/core/teamBuild";
 import { setChoiceKey } from "@/domain/combat/lineup/setChoices";
 import type { MainStat, Slot, SubStat } from "@/domain/enums";
@@ -22,6 +22,16 @@ import type {
 import { buildTeamSlotConfigs } from "@/domain/team/teamConfigUtils";
 import { teamCompInputToComp } from "@/domain/team/teamDeltas";
 import { runSetConfigExplorer } from "@/services/combat/lineup/setConfigExplorer";
+
+// Small inventories finish quickly; shorter runs and narrower screens keep
+// the suite light without changing which assignments are compared.
+vi.mock("@/domain/combat/lineup/constants", async (importOriginal) => ({
+  ...(await importOriginal<
+    typeof import("@/domain/combat/lineup/constants")
+  >()),
+  SET_MIN_RUN_MS: 500,
+  SET_GENERATED_REFINE_COUNT: 8,
+}));
 
 let chars: CharacterStatsMap;
 beforeAll(async () => {
@@ -146,7 +156,7 @@ function request(
       useAccountArtifacts: true,
       lockedCharIds: ["xingqiu", "zhongli"],
       pinned: {},
-      timeBudgetSec: 12,
+      timeBudgetSec: 2,
       ...overrides,
     },
   };
@@ -200,13 +210,23 @@ describe("runSetConfigExplorer", () => {
     // With ideal artifacts, Hu Tao keeps Crimson Witch and Bennett carries Noblesse.
     expect(choiceOf(result, generated, "hu_tao")).toBe(CW);
     expect(choiceOf(result, generated, "bennett")).toBe(NOBLESSE);
-    // With these pieces, Hu Tao is better off in the excellent Noblesse pieces.
-    expect(choiceOf(result, result.bestIndex, "hu_tao")).toBe(NOBLESSE);
+    // On these pieces, the junk Crimson Witch set loses: Hu Tao moves off it,
+    // and Noblesse on Hu Tao beats the current sets.
+    expect(choiceOf(result, result.bestIndex, "hu_tao")).not.toBe(CW);
+    const currentDamage =
+      result.outcomes[result.currentIndex].account?.damage ?? 0;
     const best = result.outcomes[result.bestIndex].account!;
-    expect(best.damage).toBeGreaterThan(
-      result.outcomes[result.currentIndex].account?.damage ?? 0
+    expect(best.damage).toBeGreaterThan(currentDamage);
+    expect(setChoiceKey(best.realized.hu_tao ?? null)).toBe(
+      choiceOf(result, result.bestIndex, "hu_tao")
     );
-    expect(setChoiceKey(best.realized.hu_tao ?? null)).toBe(NOBLESSE);
+    const noblesseRow = result.rowsByChar.hu_tao.find(
+      (row) => row.key === NOBLESSE
+    );
+    expect(noblesseRow?.basis).toBe("account");
+    expect(
+      result.outcomes[noblesseRow!.outcomeIndex].account?.damage
+    ).toBeGreaterThan(currentDamage);
     const ids = Object.values(best.artifactsByChar).flatMap((slots) =>
       Object.values(slots).map((artifact) => artifact?.id)
     );

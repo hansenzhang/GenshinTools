@@ -11,6 +11,7 @@
  * for that assignment; searches use the optimize context.
  */
 
+import { TIER_LIST_SUPPORT_ARTIFACT_SETS } from "@/config/gameConstants";
 import type { Element } from "@/domain/enums";
 import type { ArtifactSetConfig } from "@/domain/models";
 import type {
@@ -348,6 +349,7 @@ export async function runSetConfigScreen(
     perMember: SET_WITNESS_CHOICES_PER_MEMBER,
     pinned: input.pinned,
     currentIndex: 0,
+    teamBuffSetIds: TIER_LIST_SUPPORT_ARTIFACT_SETS,
   });
   for (const [done, index] of witnesses.entries()) {
     const outcome = outcomes[index];
