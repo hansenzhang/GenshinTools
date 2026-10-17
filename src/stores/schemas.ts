@@ -8,7 +8,7 @@
 import { z } from "zod";
 import { DEFAULT_COMPUTE_OPTIONS } from "@/domain/build/computeFilters";
 import { isCustomDelta, isPresetDelta } from "@/domain/build/presetDelta";
-import type { SortDirection } from "@/domain/enums";
+import { elements, type SortDirection } from "@/domain/enums";
 import {
   DEFAULT_MIN_SCORE_DIFF,
   DEFAULT_TIER_THRESHOLDS,
@@ -20,6 +20,7 @@ import type { GlobalStatWeights } from "@/domain/models";
 import {
   ArtifactSetConfigSchema,
   EnemyResByElementSchema,
+  TeamSlotConfigSchema,
 } from "@/domain/team/schemas";
 import { migrateBundledPresetId } from "@/stores/migration/presetIds";
 
@@ -745,4 +746,82 @@ const TeamResultCacheEntrySchema = z.object({
 
 export const PersistedTeamResultCacheStoreSchema = z.object({
   resultsByTeamId: z.record(z.string(), TeamResultCacheEntrySchema).catch({}),
+});
+
+// ─── Lineups ───
+
+/** Keeps the valid items of a persisted list and drops the rest. */
+function validItems<T extends z.ZodType>(schema: T) {
+  return z
+    .array(z.unknown())
+    .transform((items) =>
+      items.flatMap((item) => {
+        const parsed = schema.safeParse(item);
+        return parsed.success ? [parsed.data as z.output<T>] : [];
+      })
+    )
+    .catch([]);
+}
+
+const EncounterFields = {
+  id: z.string(),
+  name: z.string().catch(""),
+  enemyLevel: z.number().int().min(1).max(200).catch(100),
+  res: EnemyResByElementSchema.catch({}),
+  targets: z.string().catch(""),
+  downtimeSeconds: z.number().finite().min(0).catch(0),
+  timeBarSeconds: z.number().finite().positive().nullable().catch(null),
+};
+
+export const EncounterSchema = z.discriminatedUnion("mode", [
+  z.object({
+    ...EncounterFields,
+    mode: z.literal("abyss"),
+    chamber: z.number().int().min(1).max(3),
+    half: z.union([z.literal(1), z.literal(2)]),
+  }),
+  z.object({
+    ...EncounterFields,
+    mode: z.literal("stygian"),
+    bossId: z.number().int().nullable().catch(null),
+  }),
+]);
+
+const CompositionRuleSchema = z.discriminatedUnion("kind", [
+  z.object({
+    kind: z.literal("element"),
+    element: z.enum(elements),
+    min: z.number().int().min(1).max(4),
+  }),
+  z.object({
+    kind: z.literal("moonsign"),
+    min: z.number().int().min(1).max(4),
+  }),
+]);
+
+export const TeamTemplateSchema = z.object({
+  id: z.string(),
+  name: z.string().catch(""),
+  teamId: z.string(),
+  flexBySlot: z.array(z.array(z.string())).max(4).catch([[], [], [], []]),
+  rules: validItems(CompositionRuleSchema),
+});
+
+export const CalibrationSchema = z.object({
+  id: z.string(),
+  templateId: z.string(),
+  encounterId: z.string(),
+  reference: z.object({
+    capturedAt: z.number(),
+    slots: z.array(TeamSlotConfigSchema).min(1),
+    artifactsByChar: z.record(z.string(), z.array(ArtifactDataSchema)),
+  }),
+  measuredSeconds: z.number().finite().positive(),
+  downtimeSeconds: z.number().finite().min(0).nullable().catch(null),
+});
+
+export const PersistedLineupStoreSchema = z.object({
+  encounters: validItems(EncounterSchema),
+  templates: validItems(TeamTemplateSchema),
+  calibrations: validItems(CalibrationSchema),
 });

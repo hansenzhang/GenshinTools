@@ -27,3 +27,9 @@ export const CUSTOM_STAT_OPTIONS: StatKey[] = [
   "defIgnore%",
   "resReduction%",
 ];
+
+/** RES of most enemies; an encounter uses it for elements it does not list. */
+export const DEFAULT_ENCOUNTER_RES = 0.1;
+
+/** Stygian Onslaught Fearless difficulty: tier 5 in the boss archive. */
+export const STYGIAN_FEARLESS_TIER = 5;

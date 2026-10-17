@@ -51,6 +51,17 @@ export const CLOUD_BACKUP_DESCRIPTORS: CloudBackupDescriptor[] = [
     conflictPolicy: "explicit-choice",
   },
   {
+    // Encounters, team templates and calibration clears stay on this device
+    // until the lineup solver is proven.
+    id: "lineups",
+    localStorageKey: "lineup-storage",
+    class: "teams",
+    includeInBackup: false,
+    namespaces: [],
+    currentVersion: 1,
+    conflictPolicy: "excluded",
+  },
+  {
     id: "account-score-cache",
     localStorageKey: "account-score-cache-storage",
     class: "local-cache",
