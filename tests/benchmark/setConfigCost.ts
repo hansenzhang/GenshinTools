@@ -15,6 +15,9 @@
  * `--pipeline` runs the explorer's screening stages (A–C) end to end and
  * prints each member's best choices on generated artifacts.
  *
+ * `--explore <GOOD.json> [--budget-sec 60]` runs the whole explorer on an
+ * account (inline optimizer) and prints each member's real-inventory rows.
+ *
  * `--account` also times one real-inventory finalist (sets enforced) per
  * team. Node has no Worker, so the optimizer runs its inline single-thread
  * path; browser runs use one worker per member and are faster.
@@ -36,7 +39,10 @@ import { runSetConfigScreen } from "@/domain/combat/lineup/setConfigScreen";
 import type { Element } from "@/domain/enums";
 import type { AccountData, ArtifactSetConfig } from "@/domain/models";
 import { getCharacterLevelTier } from "@/domain/reference/stats";
+import type { SetConfigExplorerResult } from "@/domain/team/setConfigExplorerTypes";
+import { teamCompInputToComp } from "@/domain/team/teamDeltas";
 import type { CharOptConfig } from "@/domain/team/types";
+import { runSetConfigExplorer } from "@/services/combat/lineup/setConfigExplorer";
 import { runTeamOptimization } from "@/services/combat/optimizer/teamOptimization";
 import {
   characterStatsResource,
@@ -387,6 +393,110 @@ async function benchAccountFinalist(
   }
 }
 
+/** Choices compared for Yae regardless of screening. */
+const EXPLORE_PINS: Record<string, ArtifactSetConfig[]> = {
+  yae_miko: [
+    { type: "2pc+2pc", halfSetIds: ["atk%-18", "atk%-18"] },
+    { type: "2pc+2pc", halfSetIds: ["atk%-18", "em-80"] },
+    { type: "2pc+2pc", halfSetIds: ["em-80", "em-80"] },
+    fourPiece("disenchantment_in_deep_shadow"),
+  ],
+};
+
+function printExplorerResult(result: SetConfigExplorerResult): void {
+  const damageOf = (index: number) =>
+    result.outcomes[index].account?.damage ?? null;
+  const best = damageOf(result.bestIndex) ?? 0;
+  const current = damageOf(result.currentIndex);
+  console.log(
+    `best vs current: ${current ? (((best - current) / current) * 100).toFixed(2) : "n/a"}%; equipped ${result.equippedDamage ? Math.round(result.equippedDamage).toLocaleString() : "n/a"}`
+  );
+  const describe = (index: number, skip: string) =>
+    result.charIds
+      .filter((id) => id !== skip)
+      .map(
+        (id) =>
+          `${id}=${setChoiceKey(result.outcomes[index].assignment[id] ?? null)}`
+      )
+      .join(" ");
+  console.log(`best: ${describe(result.bestIndex, "")}`);
+  for (const charId of result.charIds) {
+    const rows = result.rowsByChar[charId]
+      .filter((row) => row.basis === "account")
+      .map((row) => {
+        const account = result.outcomes[row.outcomeIndex].account!;
+        const value =
+          account.damage == null
+            ? `unreachable (${[
+                ...Object.entries(account.failReasons).map(
+                  ([id, reason]) => `${id}:${reason.kind}`
+                ),
+                ...account.unmetCharIds.map((id) => `${id}:requirement`),
+              ].join(", ")})`
+            : `${((account.damage / best) * 100).toFixed(1)}%`;
+        return `${row.key}${row.pinned ? " (pinned)" : ""} ${value} [${describe(row.outcomeIndex, charId)}]`;
+      });
+    console.log(`  ${charId}:\n    ${rows.join("\n    ")}`);
+  }
+}
+
+async function exploreAccount(
+  name: string,
+  account: AccountData,
+  members: [string, ArtifactSetConfig][],
+  budgetSec: number
+): Promise<void> {
+  console.log(`\n## Explore: ${name} (budget ${budgetSec} s)`);
+  const chars = await characterStatsResource.preload();
+  const configs = buildAccountConfigs(account, members);
+  const teamComp = teamCompInputToComp({
+    id: `bench-${name}`,
+    characters: configs.map((config) => config.charId),
+    weapons: configs.map((config) => config.weaponId),
+    artifacts: configs.map((config) => config.artifactSet),
+  });
+  const team = new TeamBuild(configs, {}, undefined, [], undefined, CTX);
+  const combo = buildDefaultCombo(team);
+  const start = performance.now();
+  let result: SetConfigExplorerResult | null = null;
+  let lastStage = "";
+  await runSetConfigExplorer(
+    {
+      teamComp,
+      setupConfig: { combatOptions: {} },
+      accountData: account,
+      objective: combo,
+      carryCharId: combo.lines[0].charId,
+      optimizeContext: CTX,
+      displayContext: CTX,
+      settings: {
+        useAccountArtifacts: true,
+        lockedCharIds: [],
+        pinned: Object.fromEntries(
+          Object.entries(EXPLORE_PINS).filter(([charId]) =>
+            configs.some((config) => config.charId === charId)
+          )
+        ),
+        timeBudgetSec: budgetSec,
+      },
+    },
+    chars,
+    (message) => {
+      if (message.type === "progress" && message.stage !== lastStage) {
+        lastStage = message.stage;
+        console.log(
+          `  ${(performance.now() - start).toFixed(0)} ms: ${message.stage}`
+        );
+      }
+      if (message.type === "result") result = message.result;
+      if (message.type === "error")
+        console.log(`error: ${message.reason} ${message.details ?? ""}`);
+    }
+  );
+  console.log(`total ${(performance.now() - start).toFixed(0)} ms`);
+  if (result) printExplorerResult(result);
+}
+
 async function main(): Promise<void> {
   const args = parseArgs(process.argv.slice(2));
   const reps = Number(args.reps ?? 40);
@@ -401,9 +511,23 @@ async function main(): Promise<void> {
       ? Object.values(TEAMS)
       : [TEAMS[teamArg]].filter((team): team is BenchTeam => !!team);
   if (teams.length === 0) throw new Error(`Unknown team: ${teamArg}`);
-  for (const team of teams) {
-    if (args.pipeline !== undefined) await benchPipeline(team);
-    else await benchTeam(team, reps, generatorReps);
+  if (args.explore === undefined)
+    for (const team of teams) {
+      if (args.pipeline !== undefined) await benchPipeline(team);
+      else await benchTeam(team, reps, generatorReps);
+    }
+
+  if (args.explore) {
+    const account = loadAccountData(args.explore);
+    const keys = teamArg === "all" ? Object.keys(ACCOUNT_TEAMS) : [teamArg];
+    for (const key of keys)
+      await exploreAccount(
+        key,
+        account,
+        ACCOUNT_TEAMS[key],
+        Number(args["budget-sec"] ?? 60)
+      );
+    return;
   }
 
   if (!args.account) return;
