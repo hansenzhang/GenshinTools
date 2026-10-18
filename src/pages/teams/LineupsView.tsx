@@ -2,6 +2,7 @@ import { Layers } from "lucide-react";
 import { ScrollLayout } from "@/components/layout/ScrollLayout";
 import { EmptyState } from "@/components/shared/EmptyState";
 import { LineupEncounters } from "@/components/teams/LineupEncounters";
+import { LineupSolver } from "@/components/teams/LineupSolver";
 import { LineupTemplates } from "@/components/teams/LineupTemplates";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { useLineupStore } from "@/stores/useLineupStore";
@@ -26,6 +27,7 @@ export function LineupsView() {
         )}
         <LineupEncounters />
         <LineupTemplates />
+        <LineupSolver />
       </div>
     </ScrollLayout>
   );

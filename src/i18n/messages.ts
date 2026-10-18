@@ -2277,6 +2277,67 @@ export const i18nUiData = {
       en: "Import account data to record clears",
       zh: "导入账号数据后才能记录通关",
     },
+    abyssLineups: { en: "Abyss lineups", zh: "深渊阵容" },
+    timePerTeam: { en: "Time per team", zh: "每队时限" },
+    timer: { en: "Timer", zh: "计时" },
+    timerPerHalf: { en: "Each half", zh: "上下半分开计时" },
+    timerShared: { en: "Shared by both halves", zh: "上下半共用计时" },
+    findLineups: { en: "Find lineups", zh: "搜索阵容" },
+    needAbyssClear: {
+      en: "Record a clear of an Abyss half to find lineups",
+      zh: "记录一次深渊半场通关后才能搜索阵容",
+    },
+    needAccountLineups: {
+      en: "Import account data to find lineups",
+      zh: "导入账号数据后才能搜索阵容",
+    },
+    progressTeam: { en: "Team {0}/{1}", zh: "队伍 {0}/{1}" },
+    stageDiversify: {
+      en: "Freeing shared artifacts and weapons",
+      zh: "错开共用的圣遗物和武器",
+    },
+    abyssChamber: { en: "Abyss 12-{0}", zh: "深渊 12-{0}" },
+    firstHalf: { en: "First half", zh: "上半" },
+    secondHalf: { en: "Second half", zh: "下半" },
+    weakestHalf: { en: "Weaker half", zh: "较弱半场" },
+    chamberMargin: { en: "Chamber", zh: "整间" },
+    pairings: { en: "Pairings", zh: "组合" },
+    pairingsTip: {
+      en: "Weaker-half margins within {0}% count as tied; the stronger half then decides.",
+      zh: "较弱半场余量相差 {0}% 以内视为持平，此时比较较强半场。",
+    },
+    pairingsTipShared: {
+      en: "Chamber margins within {0}% count as tied; the weaker half then decides.",
+      zh: "整间余量相差 {0}% 以内视为持平，此时比较较弱半场。",
+    },
+    vsRecorded: { en: "{0}% vs recorded build", zh: "较记录配装 {0}%" },
+    bestAlone: { en: "×{0} alone", zh: "单独可达 ×{0}" },
+    originPieces: {
+      en: "Leaves the other half's artifacts",
+      zh: "避开另一半场的圣遗物",
+    },
+    originWeapon: {
+      en: "Takes a free weapon copy",
+      zh: "改用空闲的武器",
+    },
+    noPairing: {
+      en: "Every pairing shares a character, artifact or weapon.",
+      zh: "所有组合都有共用的角色、圣遗物或武器。",
+    },
+    noClearHalf: { en: "No recorded clear", zh: "没有通关记录" },
+    issueNoObjective: { en: "No rotation to score", zh: "没有可计算的循环" },
+    issueReference: {
+      en: "The recorded build cannot be scored",
+      zh: "记录的配装无法计算",
+    },
+    issueNoComposition: {
+      en: "The account cannot field this team",
+      zh: "账号凑不齐这支队伍",
+    },
+    issueNoCandidate: {
+      en: "No build found from your artifacts",
+      zh: "用已有圣遗物找不到配装",
+    },
   },
   filters: {
     title: { en: "Filters", zh: "过滤" },
