@@ -58,7 +58,7 @@ export interface TeamTemplate {
   rules: CompositionRule[];
 }
 
-/** One character per team slot, in slot order. */
+/** One character per filled team slot, in slot order. */
 export type TemplateComposition = string[];
 
 // ─── Calibration ───

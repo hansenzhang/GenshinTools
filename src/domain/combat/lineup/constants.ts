@@ -43,3 +43,27 @@ export const SET_SCREEN_EXCLUDED_HALF_SET_IDS: ReadonlySet<string> = new Set([
   "electro-res-40",
   "nightsoul-energy-6",
 ]);
+
+// Lineup solver (docs/design/lineup-solver.md, P2).
+
+/** Margins within this percent of each other count as tied. */
+export const LINEUP_MARGIN_TIE_PERCENT = 3;
+
+/** Pairings listed per Abyss chamber. */
+export const LINEUP_PAIRINGS_SHOWN = 4;
+
+/** Compositions ranked with generated artifacts at their current sets. */
+export const LINEUP_RANKED_COMPOSITIONS = 64;
+
+/** Compositions per template and encounter whose sets are screened. */
+export const LINEUP_SCREENED_COMPOSITIONS = 4;
+
+/** Real-inventory runs per template and encounter. */
+export const LINEUP_MAX_RUNS = 6;
+
+/** Re-runs per chamber that keep clear of the other half's gear. */
+export const LINEUP_MAX_DIVERSIFY_RUNS = 4;
+
+export const LINEUP_TIME_BUDGET_OPTIONS_SEC = [30, 60, 120] as const;
+
+export const LINEUP_DEFAULT_TIME_BUDGET_SEC = 30;

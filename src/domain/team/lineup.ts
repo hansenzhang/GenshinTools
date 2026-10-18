@@ -138,20 +138,24 @@ export function compositionMeetsRules(
   });
 }
 
-/** Candidates for each filled slot: the team's character, then its alternatives. */
+/** Candidates for each filled slot: the team's character, then its
+ *  alternatives. A composition lists one character per entry, in this order. */
 export function templateSlotCandidates(
   template: TeamTemplate,
   team: TeamComp
-): string[][] {
+): { slot: number; candidates: string[] }[] {
   const { characters } = teamCompToArrays(team);
   return characters
-    .map((charId, slot) => [
-      ...new Set([
-        ...(charId ? [charId] : []),
-        ...(template.flexBySlot[slot] ?? []),
-      ]),
-    ])
-    .filter((candidates) => candidates.length > 0);
+    .map((charId, slot) => ({
+      slot,
+      candidates: [
+        ...new Set([
+          ...(charId ? [charId] : []),
+          ...(template.flexBySlot[slot] ?? []),
+        ]),
+      ],
+    }))
+    .filter(({ candidates }) => candidates.length > 0);
 }
 
 /** Every composition the template allows: one candidate per slot, no
@@ -162,7 +166,7 @@ export function templateCompositions(
   traits: (charId: string) => CharacterTraits
 ): TemplateComposition[] {
   let partial: TemplateComposition[] = [[]];
-  for (const candidates of templateSlotCandidates(template, team)) {
+  for (const { candidates } of templateSlotCandidates(template, team)) {
     partial = partial.flatMap((composition) =>
       candidates
         .filter((charId) => !composition.includes(charId))
