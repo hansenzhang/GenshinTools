@@ -554,7 +554,8 @@ export function LineupRow({
 
 /**
  * Contested gear the lineup would miss most, with the margin left without.
- * Pieces one member wears that cost the same to lose read as one entry.
+ * Pieces one member wears that cost the same to lose read as one entry, and
+ * gear no found build replaces is grouped at the end.
  */
 export function BindingList({
   items,
@@ -571,11 +572,8 @@ export function BindingList({
       for (const artifact of Object.values(member.artifacts))
         if (artifact)
           wornBy.set(artifact.id, { charId: member.charId, artifact });
-  const entries: {
-    key: string;
-    item: BindingItem;
-    artifacts: ArtifactData[];
-  }[] = [];
+  type Entry = { key: string; item: BindingItem; artifacts: ArtifactData[] };
+  const entries: Entry[] = [];
   for (const item of items) {
     const worn = item.kind === "artifact" ? wornBy.get(item.id) : undefined;
     const key = worn
@@ -585,68 +583,82 @@ export function BindingList({
     if (entry && worn) entry.artifacts.push(worn.artifact);
     else entries.push({ key, item, artifacts: worn ? [worn.artifact] : [] });
   }
+  const measured = entries.filter(({ item }) => item.marginWithout != null);
+  const irreplaceable = entries.filter(
+    ({ item }) => item.marginWithout == null
+  );
+  const describe = ({ item, artifacts }: Entry) => {
+    const [artifact] = artifacts;
+    const owner = artifact ? wornBy.get(artifact.id)?.charId : undefined;
+    const name =
+      item.kind === "character"
+        ? t.character(item.id)
+        : item.kind === "weapon"
+          ? t.weapon(item.id)
+          : artifact && owner
+            ? `${t.character(owner)} · ${t.artifact(artifact.setKey)}`
+            : item.id;
+    const icon =
+      item.kind === "character" ? (
+        <ItemIcon characterId={item.id} size="xs" alt={name} />
+      ) : item.kind === "weapon" ? (
+        <ItemIcon weaponId={item.id} size="xs" alt={name} />
+      ) : artifact ? (
+        <ArtifactDataHoverCard
+          artifact={artifact}
+          slot={artifact.slotKey}
+          side="bottom"
+        >
+          <ItemIcon
+            artifactSetId={artifact.setKey}
+            slot={artifact.slotKey}
+            rarity={artifact.rarity}
+            level={`+${artifact.level}`}
+            size="xs"
+            alt={name}
+          />
+        </ArtifactDataHoverCard>
+      ) : null;
+    return (
+      <span className="flex items-center gap-1" title={name}>
+        {icon}
+        {artifacts.length > 1 && (
+          <span className="font-semibold text-muted-foreground">
+            ×{artifacts.length}
+          </span>
+        )}
+      </span>
+    );
+  };
   return (
-    <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
+    <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 text-xs md:text-sm">
       <span
         className={LINEUP_LABEL_CLS}
         title={t.ui("lineup.hardestToLoseTip")}
       >
         {t.ui("lineup.hardestToLose")}
       </span>
-      {entries.slice(0, BINDING_SHOWN).map(({ key, item, artifacts }) => {
-        const [artifact] = artifacts;
-        const owner = artifact ? wornBy.get(artifact.id)?.charId : undefined;
-        const name =
-          item.kind === "character"
-            ? t.character(item.id)
-            : item.kind === "weapon"
-              ? t.weapon(item.id)
-              : artifact && owner
-                ? `${t.character(owner)} · ${t.artifact(artifact.setKey)}`
-                : item.id;
-        const icon =
-          item.kind === "character" ? (
-            <ItemIcon characterId={item.id} size="xs" alt={name} />
-          ) : item.kind === "weapon" ? (
-            <ItemIcon weaponId={item.id} size="xs" alt={name} />
-          ) : artifact ? (
-            <ArtifactDataHoverCard
-              artifact={artifact}
-              slot={artifact.slotKey}
-              side="bottom"
-            >
-              <ItemIcon
-                artifactSetId={artifact.setKey}
-                slot={artifact.slotKey}
-                rarity={artifact.rarity}
-                level={`+${artifact.level}`}
-                size="xs"
-                alt={name}
-              />
-            </ArtifactDataHoverCard>
-          ) : null;
-        return (
-          <span
-            key={key}
-            className="flex items-center gap-1 text-xs md:text-sm"
-            title={name}
-          >
-            {icon}
-            {artifacts.length > 1 && (
-              <span className="font-semibold text-muted-foreground">
-                ×{artifacts.length}
-              </span>
-            )}
-            {item.marginWithout == null ? (
-              <span className={cn("font-semibold", VALUE_COLORS.negative)}>
-                {t.ui("lineup.noAlternative")}
-              </span>
-            ) : (
-              <MarginValue margin={item.marginWithout} />
-            )}
+      {measured.slice(0, BINDING_SHOWN).map((entry) => (
+        <span key={entry.key} className="flex items-center gap-1">
+          {describe(entry)}
+          <MarginValue margin={entry.item.marginWithout ?? 0} />
+        </span>
+      ))}
+      {irreplaceable.length > 0 && (
+        <span className="flex flex-wrap items-center gap-1">
+          <span className={cn("font-semibold", VALUE_COLORS.negative)}>
+            {t.ui("lineup.noAlternative")}
           </span>
-        );
-      })}
+          {irreplaceable.slice(0, BINDING_SHOWN).map((entry) => (
+            <span key={entry.key}>{describe(entry)}</span>
+          ))}
+          {irreplaceable.length > BINDING_SHOWN && (
+            <span className="text-muted-foreground">
+              +{irreplaceable.length - BINDING_SHOWN}
+            </span>
+          )}
+        </span>
+      )}
     </div>
   );
 }

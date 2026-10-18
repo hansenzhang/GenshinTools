@@ -737,8 +737,10 @@ function conflictingPairs(
 
 /**
  * One lineup for the whole group, built encounter by encounter in order of
- * each one's best strength: every pick is the strongest candidate sharing
- * no character with the earlier picks, kept clear of their gear.
+ * each one's best strength: every pick is the strongest candidate sharing no
+ * character with the earlier picks, kept clear of their gear. A pick also
+ * leaves alone characters every candidate of a later encounter needs, when
+ * it can.
  */
 async function chainLineup(
   state: SolverState,
@@ -747,26 +749,50 @@ async function chainLineup(
   weakestFirst: boolean,
   step: () => void
 ): Promise<void> {
-  const best = (encounterId: string, taken: ReadonlySet<string>) =>
-    state.candidates
-      .filter(
-        (candidate) =>
-          candidate.encounterId === encounterId &&
-          !candidate.members.some((member) => taken.has(member.charId))
-      )
-      .sort((a, b) => strength(b) - strength(a))[0];
+  const on = (encounterId: string) =>
+    state.candidates.filter(
+      (candidate) => candidate.encounterId === encounterId
+    );
+  const strongest = (candidates: readonly LineupCandidate[]) =>
+    [...candidates].sort((a, b) => strength(b) - strength(a))[0];
+  /** Characters in every candidate of the encounter. */
+  const required = (encounterId: string) => {
+    const [first, ...rest] = on(encounterId).map(
+      (candidate) => new Set(candidate.members.map((member) => member.charId))
+    );
+    return first
+      ? [...first].filter((charId) => rest.every((set) => set.has(charId)))
+      : [];
+  };
   const order = [...group].sort((a, b) => {
     const gap =
-      (best(a.id, new Set()) ? strength(best(a.id, new Set())) : 0) -
-      (best(b.id, new Set()) ? strength(best(b.id, new Set())) : 0);
+      (strongest(on(a.id)) ? strength(strongest(on(a.id))) : 0) -
+      (strongest(on(b.id)) ? strength(strongest(on(b.id))) : 0);
     return weakestFirst ? gap : -gap;
   });
+  const pick = (index: number, taken: ReadonlySet<string>) => {
+    const free = on(order[index].id).filter(
+      (candidate) =>
+        !candidate.members.some((member) => taken.has(member.charId))
+    );
+    const reserved = new Set(
+      order.slice(index + 1).flatMap((encounter) => required(encounter.id))
+    );
+    return (
+      strongest(
+        free.filter(
+          (candidate) =>
+            !candidate.members.some((member) => reserved.has(member.charId))
+        )
+      ) ?? strongest(free)
+    );
+  };
   const lineup: LineupCandidate[] = [];
-  for (const encounter of order) {
+  for (const index of order.keys()) {
     const taken = new Set(
       lineup.flatMap((chosen) => chosen.members.map((member) => member.charId))
     );
-    const candidate = best(encounter.id, taken);
+    const candidate = pick(index, taken);
     if (!candidate) return;
     if (lineup.length === 0) {
       lineup.push(candidate);

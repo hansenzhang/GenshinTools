@@ -155,9 +155,15 @@ function gearOf(candidate: LineupCandidate): LineupGear[] {
 
 const gearKey = (gear: LineupGear) => `${gear.kind}:${gear.id}`;
 
+const GEAR_ORDER: Record<LineupGear["kind"], number> = {
+  character: 0,
+  weapon: 1,
+  artifact: 2,
+};
+
 /**
  * Gear the lineup uses that a candidate for another of its encounters also
- * uses, in the lineup's member order.
+ * uses: characters, then weapons, then pieces.
  */
 export function contestedGear(
   lineup: readonly LineupCandidate[],
@@ -178,7 +184,9 @@ export function contestedGear(
     for (const gear of gearOf(chosen))
       if (elsewhere.has(gearKey(gear))) contested.set(gearKey(gear), gear);
   }
-  return [...contested.values()];
+  return [...contested.values()].sort(
+    (a, b) => GEAR_ORDER[a.kind] - GEAR_ORDER[b.kind]
+  );
 }
 
 /**
