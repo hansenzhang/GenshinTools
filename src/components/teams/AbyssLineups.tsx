@@ -8,12 +8,13 @@ import {
 } from "@/components/ui/select";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { planAbyssChambers } from "@/domain/combat/lineup/abyssPairs";
-import { marginsTied } from "@/domain/combat/lineup/candidates";
+import { fillAnyPieces, marginsTied } from "@/domain/combat/lineup/candidates";
 import {
   LINEUP_DEFAULT_TIME_BUDGET_SEC,
   LINEUP_MARGIN_TIE_PERCENT,
   LINEUP_PAIRINGS_SHOWN,
 } from "@/domain/combat/lineup/constants";
+import type { ArtifactData } from "@/domain/models";
 import type {
   AbyssChamberPlan,
   AbyssPairing,
@@ -24,6 +25,7 @@ import { LINEUP_HEADER_CLS, LINEUP_SECTION_CLS } from "./LineupEncounters";
 import {
   BindingList,
   CandidateDetail,
+  KeepersToggle,
   LINEUP_LABEL_CLS,
   LINEUP_SELECT_CLS,
   LineupRow,
@@ -37,8 +39,13 @@ import {
 } from "./LineupResults";
 
 /** Abyss lineup settings for this session. */
-let sessionSettings: { timeBudgetSec: number; timerRule: AbyssTimerRule } = {
+let sessionSettings: {
+  timeBudgetSec: number | null;
+  keepersOnly: boolean;
+  timerRule: AbyssTimerRule;
+} = {
   timeBudgetSec: LINEUP_DEFAULT_TIME_BUDGET_SEC,
+  keepersOnly: true,
   timerRule: "per-half",
 };
 
@@ -49,12 +56,15 @@ function pairingKey(pairing: AbyssPairing): string {
 function ChamberCard({
   plan,
   candidates,
+  artifacts,
   timerRule,
   issuesFor,
   names,
 }: {
   plan: AbyssChamberPlan;
   candidates: readonly CalibratedCandidate[];
+  /** The account's pieces, for members that take any pieces. */
+  artifacts: readonly ArtifactData[];
   timerRule: AbyssTimerRule;
   issuesFor: (encounterId: string | null) => string[];
   names: TeamNames;
@@ -68,6 +78,15 @@ function ChamberCard({
     candidates.find((entry) => entry.id === id) ?? null;
   const bothHalves =
     plan.bestAlone.first != null && plan.bestAlone.second != null;
+  // The pairing's teams with free pieces for members that take any pieces.
+  const shown = fillAnyPieces(
+    [candidate(pairing?.firstId), candidate(pairing?.secondId)].filter(
+      (entry) => entry !== null
+    ),
+    artifacts
+  );
+  const shownCandidate = (id: string | null | undefined) =>
+    shown.find((entry) => entry.id === id) ?? null;
 
   return (
     <div className="flex min-w-0 flex-col gap-2 rounded-lg border border-foreground/15 bg-background/30 p-2 md:p-3">
@@ -95,7 +114,7 @@ function ChamberCard({
           {plan.firstEncounterId && (
             <CandidateDetail
               label={t.ui("lineup.firstHalf")}
-              candidate={candidate(pairing?.firstId)}
+              candidate={shownCandidate(pairing?.firstId)}
               bestAlone={plan.bestAlone.first}
               issues={issuesFor(plan.firstEncounterId)}
               names={names}
@@ -104,7 +123,7 @@ function ChamberCard({
           {plan.secondEncounterId && (
             <CandidateDetail
               label={t.ui("lineup.secondHalf")}
-              candidate={candidate(pairing?.secondId)}
+              candidate={shownCandidate(pairing?.secondId)}
               bestAlone={plan.bestAlone.second}
               issues={issuesFor(plan.secondEncounterId)}
               names={names}
@@ -167,7 +186,11 @@ export function AbyssLineups() {
     sessionSettings = next;
     setSettings(next);
   };
-  const job = useLineupJob("abyss", settings.timeBudgetSec);
+  const job = useLineupJob(
+    "abyss",
+    settings.timeBudgetSec,
+    settings.keepersOnly
+  );
   const { encounters, calibrations, calibrated } = job;
   const { result } = job.solver;
   // Chambers without a recorded clear on either half have nothing to show.
@@ -180,7 +203,8 @@ export function AbyssLineups() {
             result.weaponCopies,
             settings.timerRule,
             LINEUP_MARGIN_TIE_PERCENT,
-            LINEUP_PAIRINGS_SHOWN
+            LINEUP_PAIRINGS_SHOWN,
+            result.setSlotCounts
           ).filter((plan) =>
             calibrations.some(
               (calibration) =>
@@ -213,6 +237,13 @@ export function AbyssLineups() {
                 disabled={job.solver.isComputing}
                 onChange={(timeBudgetSec) =>
                   updateSettings({ ...settings, timeBudgetSec })
+                }
+              />
+              <KeepersToggle
+                checked={settings.keepersOnly}
+                disabled={job.solver.isComputing}
+                onChange={(keepersOnly) =>
+                  updateSettings({ ...settings, keepersOnly })
                 }
               />
               <div className="flex items-center gap-1">
@@ -252,6 +283,7 @@ export function AbyssLineups() {
                 key={plan.chamber}
                 plan={plan}
                 candidates={calibrated}
+                artifacts={job.artifacts}
                 timerRule={settings.timerRule}
                 issuesFor={issuesFor}
                 names={names}

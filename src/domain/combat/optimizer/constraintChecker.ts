@@ -19,6 +19,30 @@ import type { ArtifactTuple, PreparedSlotData } from "./types";
 /** Assumed EM from 3 artifact main stats (sands+goblet+circlet L20). */
 const ESTIMATED_3EM_MAIN = 3 * 186.5;
 
+/**
+ * Whether a member meets its ER and CR requirements with no artifact stats,
+ * teammates on `sheets`. A requirement of 100% ER is met by base ER alone.
+ */
+export function meetsRequirementsUnequipped(
+  teamBuild: TeamBuild,
+  charId: string,
+  sheets: Record<string, StatSheet>,
+  calcContext: CalcContext,
+  minEr: number,
+  minCr: number
+): boolean {
+  if (minEr <= 0 && minCr <= 0) return true;
+  const stats = teamBuild.getTeamStats(
+    { ...sheets, [charId]: new StatSheet([]) },
+    charId,
+    calcContext
+  )[charId];
+  return (
+    (stats?.get("er", null) ?? 0) + 1e-6 >= minEr &&
+    (stats?.get("cr", null) ?? 0) + 1e-6 >= minCr
+  );
+}
+
 export class ConstraintChecker {
   readonly charId: string;
   readonly hasEr: boolean;

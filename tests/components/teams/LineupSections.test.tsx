@@ -127,4 +127,25 @@ describe("LineupTemplates", () => {
       screen.getByRole("combobox", { name: "Link team" })
     ).toBeInTheDocument();
   });
+
+  it("warns when the team itself breaks the template's rules", () => {
+    const teamId = seedTeam();
+    const team = useTeamStore.getState().teamCompById[teamId]!;
+    // Hu Tao's team has no Moonsign character; two join in its last slots.
+    useLineupStore.getState().addTemplate({
+      ...createTeamTemplate("t1", team),
+      flexBySlot: [[], [], ["columbina"], ["ineffa"]],
+      rules: [{ kind: "moonsign", min: 2 }],
+    });
+    render(<LineupTemplates />);
+    expect(screen.getByText("Compositions: 1")).toBeInTheDocument();
+    expect(
+      screen.getByText(/The team itself breaks these rules/)
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        "Alternatives that join are scored with their default rotation, not yours"
+      )
+    ).toBeInTheDocument();
+  });
 });

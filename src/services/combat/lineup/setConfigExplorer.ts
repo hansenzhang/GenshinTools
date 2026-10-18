@@ -27,6 +27,7 @@ import {
 } from "@/domain/combat/lineup/setAssignments";
 import {
   evaluateAssignment,
+  findUnmetMembers,
   runSetConfigScreen,
   type SetRequirement,
   type SetScreenInput,
@@ -122,38 +123,6 @@ function realizedSets(
       ),
     ])
   );
-}
-
-function findUnmetMembers(
-  screen: SetScreenInput,
-  assignment: SetAssignment,
-  sheets: Record<string, StatSheet>
-): string[] {
-  const team = new TeamBuild(
-    screen.configs.map((config) => ({
-      ...config,
-      artifactSet: assignment[config.charId] ?? null,
-    })),
-    screen.combatOptions,
-    screen.enemyAura,
-    screen.extraBuffs,
-    undefined,
-    screen.displayContext
-  );
-  return screen.configs.flatMap((config) => {
-    const requirement = screen.requirements[config.charId];
-    if (!requirement?.minEr && !requirement?.minCr) return [];
-    const stats = team.getTeamStats(
-      sheets,
-      config.charId,
-      screen.displayContext
-    )[config.charId];
-    const er = stats?.get("er", null) ?? 0;
-    const cr = stats?.get("cr", null) ?? 0;
-    return er + 1e-6 < requirement.minEr || cr + 1e-6 < requirement.minCr
-      ? [config.charId]
-      : [];
-  });
 }
 
 /** Score a complete set of real pieces with the sets they actually form. */
@@ -284,10 +253,17 @@ export function prepareTeamSetsJob(
   };
   if (combo.lines.length === 0) return failed("no-objective");
 
-  const allArtifacts = collectAccountArtifacts(request);
+  const accountArtifacts = collectAccountArtifacts(request);
+  const { keepers } = request;
+  const allArtifacts = keepers
+    ? accountArtifacts.filter((artifact) => keepers.ids.has(artifact.id))
+    : accountArtifacts;
+  const others = keepers
+    ? accountArtifacts.filter((artifact) => !keepers.ids.has(artifact.id))
+    : [];
   const reservations = request.inventoryReservations;
-  const inventoryFor = (assignment: SetAssignment) =>
-    computeTeamInventory({
+  const inventoryFor = (assignment: SetAssignment) => {
+    const inventory = computeTeamInventory({
       allArtifacts,
       frozenTeams: reservations?.teams ?? {},
       reuseMode: reservations?.reuseMode ?? "none",
@@ -298,6 +274,13 @@ export function prepareTeamSetsJob(
         slot.charId ? (assignment[slot.charId] ?? null) : null
       ),
     });
+    for (const charId of keepers?.openCharIds ?? [])
+      inventory.perCharExtraArtifacts[charId] = [
+        ...(inventory.perCharExtraArtifacts[charId] ?? []),
+        ...others,
+      ];
+    return inventory;
+  };
   const useAccount = settings.useAccountArtifacts;
   const baseInventory = useAccount ? inventoryFor(current) : null;
   const forced = baseInventory?.forceReuseChars ?? {};
@@ -348,6 +331,11 @@ export function prepareTeamSetsJob(
             canWearSetConfig(choice, countsByChar[charId]),
           isJointlyFeasible: (assignment) =>
             isAssignmentJointlyFeasible(assignment, sharedCounts),
+          pools: Object.fromEntries(
+            charIds
+              .filter((charId) => !forced[charId])
+              .map((charId) => [charId, poolFor(charId)])
+          ),
         }
       : {}),
   };
@@ -368,13 +356,13 @@ export function prepareTeamSetsJob(
 
 /**
  * Optimize one set assignment on the account's pieces and score what the
- * optimizer finds with the sets those pieces form. `excludedIds` keeps
- * pieces out of every member's pool.
+ * optimizer finds with the sets those pieces form. `runMs` null searches
+ * until done; `excludedIds` keeps pieces out of every member's pool.
  */
 export async function optimizeAssignmentOnAccount(
   job: TeamSetsJob,
   assignment: SetAssignment,
-  runMs: number,
+  runMs: number | null,
   excludedIds: ReadonlySet<string> = new Set()
 ): Promise<SetAccountOutcome> {
   const { request, configs, charIds, combo, screen } = job;
@@ -449,7 +437,7 @@ export async function optimizeAssignmentOnAccount(
       calcContext: request.optimizeContext,
       baseSheets,
       perChar,
-      teamDeadlineMs: performance.now() + runMs,
+      teamDeadlineMs: runMs == null ? undefined : performance.now() + runMs,
       perCharExtraArtifacts: Object.fromEntries(
         Object.entries(inventory.perCharExtraArtifacts).map(
           ([charId, artifacts]) => [
@@ -530,11 +518,28 @@ export async function runSetConfigExplorer(
 
   const budgetMs = Math.max(1, settings.timeBudgetSec) * 1000;
   const maxRuns = Math.max(2, Math.floor(budgetMs / SET_MIN_RUN_MS));
+  // Ideal pieces rate every set alike; the account estimate decides which
+  // sets are worth a real run. Sets the account cannot form count as no
+  // damage, so a pinned one still runs and reports why.
+  const estimate = (outcome: SetAssignmentOutcome) =>
+    outcome.accountEstimate === undefined
+      ? null
+      : (outcome.accountEstimate ?? 0);
   const finalists = selectFinalists({
     outcomes,
     charIds,
-    score: (outcome) => outcome.generatedDamage ?? null,
-    bestIndex: generatedResult.bestIndex,
+    score: estimate,
+    bestIndex:
+      pickBestOutcome(
+        outcomes,
+        outcomes.flatMap((outcome, index) =>
+          estimate(outcome) == null ? [] : [index]
+        ),
+        estimate,
+        current,
+        charIds,
+        SET_GENERATED_TIE_PERCENT
+      ) ?? generatedResult.bestIndex,
     currentIndex,
     teamBuffSetIds: TIER_LIST_SUPPORT_ARTIFACT_SETS,
     pinned: settings.pinned,

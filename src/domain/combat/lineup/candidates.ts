@@ -1,3 +1,6 @@
+import { allSlots, type Slot } from "@/domain/enums";
+import type { ArtifactData } from "@/domain/models";
+import { artifactIdToHalfSetId } from "@/domain/reference/catalog";
 import {
   calibratedMargin,
   calibrationTimes,
@@ -8,16 +11,127 @@ import type {
   CalibratedCandidate,
   LineupCandidate,
   LineupGear,
+  LineupMember,
 } from "@/domain/team/lineupSolverTypes";
 import type { Calibration, Encounter } from "@/domain/team/lineupTypes";
 import { LINEUP_BINDING_CHECKS } from "./constants";
 
+/** Pieces the candidate needs exactly; members that take any pieces of
+ *  their set are left out. */
 export function candidateArtifactIds(candidate: LineupCandidate): string[] {
   return candidate.members.flatMap((member) =>
-    Object.values(member.artifacts).flatMap((artifact) =>
-      artifact ? [artifact.id] : []
-    )
+    member.anyPieces
+      ? []
+      : Object.values(member.artifacts).flatMap((artifact) =>
+          artifact ? [artifact.id] : []
+        )
   );
+}
+
+export function setSlotKey(setKey: string, slot: Slot): string {
+  return `${setKey}:${slot}`;
+}
+
+/** Owned pieces per set and slot. */
+export function countSetSlotPieces(
+  artifacts: readonly ArtifactData[]
+): Record<string, number> {
+  const counts: Record<string, number> = {};
+  for (const artifact of artifacts) {
+    const key = setSlotKey(artifact.setKey, artifact.slotKey);
+    counts[key] = (counts[key] ?? 0) + 1;
+  }
+  return counts;
+}
+
+/**
+ * Slots a member that takes any pieces has to fill from its set: four of a
+ * 4pc set, two of each set of a 2+2, keyed by `setSlotKey`. Its fifth piece
+ * can be anything.
+ */
+function anyPieceSlots(member: LineupMember): string[] {
+  const { artifactSet } = member;
+  if (!artifactSet) return [];
+  const inSet = (setKey: string) =>
+    artifactSet.type === "4pc"
+      ? setKey === artifactSet.setId
+      : artifactSet.halfSetIds.includes(artifactIdToHalfSetId[setKey] ?? "");
+  const perSet = artifactSet.type === "4pc" ? 4 : 2;
+  const counted: Record<string, number> = {};
+  const keys: string[] = [];
+  for (const slot of allSlots) {
+    const setKey = member.artifacts[slot]?.setKey;
+    if (!setKey || !inSet(setKey) || (counted[setKey] ?? 0) >= perSet) continue;
+    counted[setKey] = (counted[setKey] ?? 0) + 1;
+    keys.push(setSlotKey(setKey, slot));
+  }
+  return keys;
+}
+
+/**
+ * Pieces per set and slot the candidate takes from the account: its exact
+ * pieces, plus what members that take any pieces need from their sets.
+ */
+export function candidateSetSlotUses(
+  candidate: LineupCandidate
+): Record<string, number> {
+  const uses: Record<string, number> = {};
+  for (const member of candidate.members) {
+    const keys = member.anyPieces
+      ? anyPieceSlots(member)
+      : Object.values(member.artifacts).flatMap((artifact) =>
+          artifact ? [setSlotKey(artifact.setKey, artifact.slotKey)] : []
+        );
+    for (const key of keys) uses[key] = (uses[key] ?? 0) + 1;
+  }
+  return uses;
+}
+
+/**
+ * The lineup with concrete pieces for members that take any pieces of their
+ * set: the ones they were scored with while nobody else in the lineup needs
+ * them, otherwise the lowest-level free piece of the same set and slot.
+ */
+export function fillAnyPieces<T extends LineupCandidate>(
+  lineup: readonly T[],
+  artifacts: readonly ArtifactData[]
+): T[] {
+  const used = new Set(lineup.flatMap(candidateArtifactIds));
+  const filled = lineup.map((candidate) => ({
+    ...candidate,
+    members: candidate.members.map((member) => ({
+      ...member,
+      artifacts: { ...member.artifacts },
+    })),
+  }));
+  const loose = filled.flatMap((candidate) =>
+    candidate.members.filter((member) => member.anyPieces)
+  );
+  const clashing: { member: LineupMember; slot: Slot }[] = [];
+  for (const member of loose)
+    for (const slot of allSlots) {
+      const artifact = member.artifacts[slot];
+      if (!artifact) continue;
+      if (used.has(artifact.id)) clashing.push({ member, slot });
+      else used.add(artifact.id);
+    }
+  const spare = [...artifacts].sort((a, b) => a.level - b.level);
+  for (const { member, slot } of clashing) {
+    const setKey = member.artifacts[slot]?.setKey;
+    const onSet = anyPieceSlots(member).includes(
+      setSlotKey(setKey ?? "", slot)
+    );
+    const free = spare.find(
+      (artifact) =>
+        artifact.slotKey === slot &&
+        !used.has(artifact.id) &&
+        (!onSet || artifact.setKey === setKey)
+    );
+    if (!free) continue;
+    used.add(free.id);
+    member.artifacts[slot] = free;
+  }
+  return filled;
 }
 
 /** Members using each weapon. */
@@ -32,15 +146,18 @@ export function candidateWeaponUses(
 
 /**
  * Whether the candidates can be fielded at once: no character or piece is
- * used twice, and no weapon by more members than there are copies.
+ * used twice, no weapon by more members than there are copies, and, with
+ * `setSlotCounts`, no set and slot by more members than there are pieces.
  */
 export function canFieldTogether(
   candidates: readonly LineupCandidate[],
-  weaponCopies: Readonly<Record<string, number>>
+  weaponCopies: Readonly<Record<string, number>>,
+  setSlotCounts?: Readonly<Record<string, number>>
 ): boolean {
   const charIds = new Set<string>();
   const artifactIds = new Set<string>();
   const weaponUses: Record<string, number> = {};
+  const setSlotUses: Record<string, number> = {};
   for (const candidate of candidates) {
     for (const member of candidate.members) {
       if (charIds.has(member.charId)) return false;
@@ -52,6 +169,13 @@ export function canFieldTogether(
     for (const id of candidateArtifactIds(candidate)) {
       if (artifactIds.has(id)) return false;
       artifactIds.add(id);
+    }
+    if (!setSlotCounts) continue;
+    for (const [key, count] of Object.entries(
+      candidateSetSlotUses(candidate)
+    )) {
+      setSlotUses[key] = (setSlotUses[key] ?? 0) + count;
+      if (setSlotUses[key] > (setSlotCounts[key] ?? 0)) return false;
     }
   }
   return true;

@@ -2,7 +2,7 @@
 
 Status: decisions and design, 2026-10-16. P1 is implemented as Build comparison › Team sets,
 P0 as Team Comp › Lineups (2026-10-18), P2 as Lineups › Abyss lineups and P3 as Lineups ›
-Stygian lineup (2026-10-19). P4–P6 are not.
+Stygian lineup (2026-10-19), with the fixes in "P3 fixes". P4–P6 are not.
 Source: the feasibility study in `~/mistilteinn/reference/notes/team-solver-study.md`, which
 compares this repo with Genshin Optimizer (GO) and gcsim, and the decisions made with the user
 after it.
@@ -353,4 +353,57 @@ and a national team (Xiangling · Xingqiu · Bennett · Kaeya) whose every build
   found had its weakest boss at ×1.074.
 - The national team's margins are high because its recorded build is weak. Only the ratio to
   that build matters.
+
+## P3 fixes (2026-10-19)
+
+A real Stygian run gave carries 4pc sets of +0/+4 pieces with no CR/CD (Sandrone in Shimenawa,
+Ineffa in Tenacity, Columbina in Noblesse) and dropped the Lunar team's Aubade. Causes:
+
+- **The set screen ignored piece quality.** It ranked sets on generated artifacts, which rate
+  every set as if its pieces were ideal, and `canWear` only asked for one piece per slot. The
+  account had no Shimenawa, Tenacity, Noblesse, Instructor or VV piece at +16 or higher.
+- **Recorded sets never ran on the account.** P1 always runs the current sets; the lineup job
+  ran only the screen's finalists, 1–2 per composition, so a team could end below its record.
+- **Saturation never fired.** The optimizer skipped members with an ER requirement, and the
+  default requirement is 100%, so every support was searched with zero weights. Their arbitrary
+  pieces then showed as contested gear.
+
+Changes:
+
+- **Debug export.** Lineups › Export debug file saves the request (account included), candidates,
+  margins, plan and a trace: compositions and screened sets with their generated damage and
+  account estimate, every real-inventory run (budget, time, fail reasons, saturated members,
+  weights), and each candidate member's final stats. `tests/benchmark/lineupReplay.ts` prints an
+  export and runs it again in Node.
+- **Account estimate** (`estimateOnAccount` in `setConfigScreen.ts`, piece values in
+  `accountEstimate.ts`, set shapes in `domain/combat/optimizer/setShapePicks.ts`). Each member's
+  pieces are valued by marginal damage per stat at the generated build, the best pieces that form
+  the set are picked (most stat-sensitive member first, no piece twice), picked again at those
+  real pieces, and the team is scored on them. Members short of ER/CR re-pick with that stat
+  valued higher, or the estimate is infeasible. The screen keeps each member's best three choices
+  on its own pieces, and estimates every re-scored assignment. Compositions and finalists are
+  ranked by the estimate; P1 picks its finalists by it too. On the own account it was within 1%
+  of the real run for the same sets.
+- **Recorded floor.** The recorded build is a candidate (`origin: "recorded"`, r = 1) when its
+  members are one of the template's compositions and its pieces are still owned, and its sets
+  run on the account first.
+- **Any pieces.** A candidate member whose artifact stats are worth under
+  `LINEUP_ANY_PIECES_PERCENT` (2%) of team damage, with its ER/CR requirement met without them,
+  only needs its set. Its pieces are not exact gear: they are left out of conflicts, binding items
+  and re-run exclusions. Instead the Stygian MILP and Abyss pairing bound pieces per set and
+  slot (`setSlotCounts`): exact pieces plus such members' set slots stay within what is owned.
+  The cards fill those members with free pieces of their set (`fillAnyPieces`).
+- **Saturation in the optimizer** is now "no stat moves damage and ER/CR are met without
+  artifacts", so the default 100% ER no longer blocks it. Its fill forms sets with
+  `pickForChoice` (2+2s included) and reports `set-impossible` like the search, unless the member
+  may drop its set.
+- **Budgets.** Time per team is 30 s, 2, 5, 10 or 20 min, or Until done (no deadline; the
+  optimizer's per-worker fallback timeouts apply only with a budget). Runs per task scale with
+  the budget up to 24, taking finalists further down the estimates. Runs with a timed-out member
+  give no candidate.
+- **Kept artifacts only** (on by default): members whose pieces matter use locked pieces, pieces
+  Triage recommends locking and recorded builds' pieces; any-pieces members use everything.
+- **Template hints**: a warning when the team itself breaks the template's rules (every margin
+  is then measured against a team that is never fielded), and a note that joining alternatives
+  use their default rotation.
 

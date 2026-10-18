@@ -2258,6 +2258,18 @@ export const i18nUiData = {
     ruleAtLeast: { en: "≥{0} {1}", zh: "{1} ≥{0}" },
     addRule: { en: "Add rule", zh: "添加条件" },
     compositions: { en: "Compositions: {0}", zh: "组合数：{0}" },
+    alternativesDefaultRotation: {
+      en: "Alternatives that join are scored with their default rotation, not yours",
+      zh: "替补角色上场时按其默认循环计算，而非你配置的循环",
+    },
+    ownTeamExcluded: {
+      en: "The team itself breaks these rules, so every margin is measured against a team that is never fielded. Put the character you play in the team.",
+      zh: "队伍本身不满足这些规则，所有余量都以一支不会上场的队伍为基准。请把实际上场的角色放进队伍。",
+    },
+    ownTeamExcludedTip: {
+      en: "Record the clear with the team you actually play, and list the others as alternatives",
+      zh: "用实际上场的队伍记录通关，其他角色作为替补列出",
+    },
     teamRemoved: { en: "Team removed from Analysis", zh: "队伍已从分析中删除" },
     linkTeam: { en: "Link team", zh: "关联队伍" },
     clears: { en: "Recorded clears", zh: "实战记录" },
@@ -2279,6 +2291,17 @@ export const i18nUiData = {
     },
     abyssLineups: { en: "Abyss lineups", zh: "深渊阵容" },
     timePerTeam: { en: "Time per team", zh: "每队时限" },
+    minutes: { en: "{0} min", zh: "{0} 分钟" },
+    untilDone: { en: "Until done", zh: "不限时" },
+    keepersOnly: { en: "Kept artifacts only", zh: "仅用保留的圣遗物" },
+    keepersOnlyTip: {
+      en: "Only locked artifacts and those Triage recommends locking. Characters whose stats don't change damage can still wear any.",
+      zh: "只使用已上锁和整理建议上锁的圣遗物。属性不影响伤害的角色仍可穿任意圣遗物。",
+    },
+    untilDoneTip: {
+      en: "Every search runs until it finishes. Large accounts can take a long time.",
+      zh: "每次搜索都运行到结束为止，圣遗物较多时可能需要很久。",
+    },
     timer: { en: "Timer", zh: "计时" },
     timerPerHalf: { en: "Each half", zh: "上下半分开计时" },
     timerShared: { en: "Shared by both halves", zh: "上下半共用计时" },
@@ -2317,6 +2340,15 @@ export const i18nUiData = {
     },
     vsRecorded: { en: "{0}% vs recorded build", zh: "较记录配装 {0}%" },
     bestAlone: { en: "×{0} alone", zh: "单独可达 ×{0}" },
+    anyPieces: { en: "Any pieces", zh: "词条不限" },
+    anyPiecesTip: {
+      en: "This character's artifact stats are worth under 2% of the team's damage, so any pieces that form the set work",
+      zh: "该角色的圣遗物属性对队伍伤害的影响不到 2%，凑齐套装即可，词条无所谓",
+    },
+    originRecorded: {
+      en: "The recorded build",
+      zh: "记录时的配装",
+    },
     originPieces: {
       en: "Leaves another team's artifacts",
       zh: "避开其他队伍的圣遗物",

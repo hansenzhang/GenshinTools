@@ -33,11 +33,18 @@ import {
   getArtifactEr,
 } from "../../../domain/combat/optimizer/artifactScoring";
 import { runCharacterBnB } from "../../../domain/combat/optimizer/characterBnB";
-import { ConstraintChecker } from "../../../domain/combat/optimizer/constraintChecker";
+import {
+  ConstraintChecker,
+  meetsRequirementsUnequipped,
+} from "../../../domain/combat/optimizer/constraintChecker";
 import {
   artsTupleToRecord,
   runLagrangianAllocation,
 } from "../../../domain/combat/optimizer/lagrangianAlloc";
+import {
+  pickForChoice,
+  rankPieces,
+} from "../../../domain/combat/optimizer/setShapePicks";
 import type {
   ArtifactTuple,
   TopKEntry,
@@ -629,8 +636,19 @@ export async function* runTeamOptimization(
             Object.values(charDeltas).some((v) => v !== undefined && v > 0);
           if (hasNonZero) continue;
 
+          // A requirement the member meets without artifacts (such as the
+          // default 100% ER) doesn't make its pieces matter.
           const charPerConf = perChar[cid];
-          if ((charPerConf?.minEr ?? 0) > 0 || (charPerConf?.minCr ?? 0) > 0) {
+          if (
+            !meetsRequirementsUnequipped(
+              teamBuild,
+              cid,
+              emptySheets,
+              calcContext,
+              charPerConf?.minEr ?? 0,
+              charPerConf?.minCr ?? 0
+            )
+          ) {
             continue;
           }
 
@@ -832,19 +850,23 @@ export async function* runTeamOptimization(
           };
           let workerReady = false;
           // Short setup timeout (10s) — if the worker can't even start, fail fast
-          let timeoutId = setTimeout(onTimeout, 10_000);
+          let timeoutId: ReturnType<typeof setTimeout> | undefined = setTimeout(
+            onTimeout,
+            10_000
+          );
 
           worker.onmessage = (e: MessageEvent<BnBWorkerResponse>) => {
             const resp = e.data;
             if (resp.type === "ready") {
-              // Worker setup done — switch to the full search budget
+              // Worker setup done — switch to the full search budget. Without
+              // a budget the search runs until it finishes.
               workerReady = true;
               markDeploymentAssetsHealthy();
               clearTimeout(timeoutId);
-              timeoutId = setTimeout(
-                onTimeout,
-                (phase1BudgetMs ?? 30_000) * 1.5
-              );
+              timeoutId =
+                phase1BudgetMs != null
+                  ? setTimeout(onTimeout, phase1BudgetMs * 1.5)
+                  : undefined;
               return;
             }
             if (resp.type === "progress") {
@@ -1875,16 +1897,19 @@ export async function* runTeamOptimization(
             const budgetMs = perCharDeadlineMs
               ? perCharDeadlineMs * budgetMultiplier
               : undefined;
-            const timeoutMs = (budgetMs ?? 15_000) * 1.5;
-            const timeoutId = setTimeout(() => {
-              worker.terminate();
-              resolve({
-                charId: input.charId,
-                bestArtifacts: null,
-                bestDamage: input.currentDamage,
-                currentDamage: input.currentDamage,
-              });
-            }, timeoutMs);
+            // Without a budget the refinement runs until it finishes.
+            const timeoutId =
+              budgetMs != null
+                ? setTimeout(() => {
+                    worker.terminate();
+                    resolve({
+                      charId: input.charId,
+                      bestArtifacts: null,
+                      bestDamage: input.currentDamage,
+                      currentDamage: input.currentDamage,
+                    });
+                  }, budgetMs * 1.5)
+                : undefined;
 
             worker.onmessage = (e: MessageEvent<BnBWorkerResponse>) => {
               const resp = e.data;
@@ -2657,6 +2682,48 @@ export async function* runTeamOptimization(
 
         picked[slot] = candidates[0];
         pickedIds.add(candidates[0].id);
+      }
+
+      // The slot-by-slot pick above can miss a set the pool still forms
+      // (a 2+2 needs two pieces of one set per half): pick set-forming
+      // pieces directly. A set the pool can't form fails like in the search,
+      // unless the member may go without its set.
+      if (charConfig.artifactSet) {
+        const fallback = buildMatch ? undefined : buildFallbackWeights(charId);
+        const score = (artifact: ArtifactData) =>
+          (buildMatch
+            ? computeWeightScore(artifact, buildMatch, 1)
+            : scoreSlotWithMainStat(
+                artifact,
+                fallback!.weights,
+                fallback!.targetMainStats
+              )) +
+          artifact.level * 1e-6;
+        const formed = pickForChoice(
+          rankPieces(charPool, score, assignedIds),
+          charConfig.artifactSet
+        );
+        if (formed) {
+          pickedIds.clear();
+          for (const slot of allSlots) {
+            picked[slot] = formed[slot];
+            pickedIds.add(formed[slot].id);
+          }
+        } else if (!failReasons[charId] && !opts.ignoreArtifactSets?.[charId]) {
+          failReasons[charId] = {
+            kind: "set-impossible",
+            artifactSet: charConfig.artifactSet,
+            slotCounts: Object.fromEntries(
+              allSlots.map((slot) => [
+                slot,
+                charPool.filter(
+                  (artifact) =>
+                    artifact.slotKey === slot && !assignedIds.has(artifact.id)
+                ).length,
+              ])
+            ),
+          };
+        }
       }
 
       // ── ER/CR constraint enforcement for saturated chars ──

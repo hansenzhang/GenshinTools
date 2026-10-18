@@ -44,6 +44,8 @@ export interface SetConfigExplorerRequest {
   displayContext: CalcContext;
   settings: SetConfigExplorerSettings;
   perCharExcludedArtifactIds?: Record<string, string[]>;
+  /** Pieces members may use, except `openCharIds`, who may use any. */
+  keepers?: { ids: ReadonlySet<string>; openCharIds: readonly string[] };
   inventoryReservations?: {
     teams: Record<string, ReservedArtifactTeam>;
     reuseMode: ArtifactInventoryReuseMode;
@@ -78,6 +80,9 @@ export interface SetAssignmentOutcome {
   screenDamage: number;
   /** Team damage with generated artifacts fitted to this assignment. */
   generatedDamage?: number;
+  /** Team damage on the account's best pieces for these sets; null when the
+   *  account cannot form them or meet ER/CR. Absent when not estimated. */
+  accountEstimate?: number | null;
   /** Members whose generated artifacts miss their ER requirement. */
   generatedErShortCharIds?: string[];
   account?: SetAccountOutcome;

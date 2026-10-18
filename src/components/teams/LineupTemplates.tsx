@@ -134,60 +134,75 @@ function FlexSlots({
       ),
     }));
 
+  const hasAlternatives = template.flexBySlot.some(
+    (alternatives) => alternatives.length > 0
+  );
+
   return (
-    <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-4">
-      {characters.map((core, slot) => {
-        if (!core) return null;
-        const alternatives = template.flexBySlot[slot] ?? [];
-        return (
-          <div
-            // biome-ignore lint/suspicious/noArrayIndexKey: team slots are positional
-            key={slot}
-            className="flex min-w-0 items-start gap-1.5 rounded-md border border-foreground/15 bg-background/30 p-1.5"
-          >
-            <ItemIcon characterId={core} size="xs" />
-            <div className="flex min-h-10 min-w-0 flex-wrap items-center gap-1.5 border-l border-foreground/15 pl-1.5">
-              {alternatives.map((charId) => (
-                <button
-                  key={charId}
-                  type="button"
-                  className="relative"
-                  title={t.format(
-                    "lineup.removeAlternative",
-                    t.character(charId)
-                  )}
-                  aria-label={t.format(
-                    "lineup.removeAlternative",
-                    t.character(charId)
-                  )}
-                  onClick={() =>
-                    setSlot(
-                      slot,
-                      alternatives.filter((entry) => entry !== charId)
-                    )
+    <div className="flex flex-col gap-1">
+      <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-4">
+        {characters.map((core, slot) => {
+          if (!core) return null;
+          const alternatives = template.flexBySlot[slot] ?? [];
+          return (
+            <div
+              // biome-ignore lint/suspicious/noArrayIndexKey: team slots are positional
+              key={slot}
+              className="flex min-w-0 items-start gap-1.5 rounded-md border border-foreground/15 bg-background/30 p-1.5"
+            >
+              <ItemIcon characterId={core} size="xs" />
+              <div className="flex min-h-10 min-w-0 flex-wrap items-center gap-1.5 border-l border-foreground/15 pl-1.5">
+                {alternatives.map((charId) => (
+                  <button
+                    key={charId}
+                    type="button"
+                    className="relative"
+                    title={t.format(
+                      "lineup.removeAlternative",
+                      t.character(charId)
+                    )}
+                    aria-label={t.format(
+                      "lineup.removeAlternative",
+                      t.character(charId)
+                    )}
+                    onClick={() =>
+                      setSlot(
+                        slot,
+                        alternatives.filter((entry) => entry !== charId)
+                      )
+                    }
+                  >
+                    <ItemIcon characterId={charId} size="xs" />
+                    <span className="absolute -right-1 -top-1 flex h-4 w-4 items-center justify-center rounded-full border border-foreground/25 bg-background text-foreground">
+                      <X className="h-3 w-3" />
+                    </span>
+                  </button>
+                ))}
+                <ItemPicker
+                  type="character"
+                  value={null}
+                  triggerSize="xs"
+                  triggerLabel={t.ui("lineup.addAlternative")}
+                  filter={(item) => {
+                    const { id } = item as { id: string };
+                    return (
+                      !characters.includes(id) && !alternatives.includes(id)
+                    );
+                  }}
+                  onChange={(charId) =>
+                    setSlot(slot, [...alternatives, charId])
                   }
-                >
-                  <ItemIcon characterId={charId} size="xs" />
-                  <span className="absolute -right-1 -top-1 flex h-4 w-4 items-center justify-center rounded-full border border-foreground/25 bg-background text-foreground">
-                    <X className="h-3 w-3" />
-                  </span>
-                </button>
-              ))}
-              <ItemPicker
-                type="character"
-                value={null}
-                triggerSize="xs"
-                triggerLabel={t.ui("lineup.addAlternative")}
-                filter={(item) => {
-                  const { id } = item as { id: string };
-                  return !characters.includes(id) && !alternatives.includes(id);
-                }}
-                onChange={(charId) => setSlot(slot, [...alternatives, charId])}
-              />
+                />
+              </div>
             </div>
-          </div>
-        );
-      })}
+          );
+        })}
+      </div>
+      {hasAlternatives && (
+        <p className="text-xs text-muted-foreground">
+          {t.ui("lineup.alternativesDefaultRotation")}
+        </p>
+      )}
     </div>
   );
 }
@@ -201,9 +216,12 @@ function ruleKey(rule: CompositionRule): string {
 function CompositionRules({
   template,
   compositionCount,
+  fieldsOwnTeam,
 }: {
   template: TeamTemplate;
   compositionCount: number;
+  /** Whether the linked team's own members are one of the compositions. */
+  fieldsOwnTeam: boolean;
 }) {
   const { t } = useLanguage();
   const updateTemplate = useLineupStore((s) => s.updateTemplate);
@@ -292,6 +310,14 @@ function CompositionRules({
       <span className="ml-auto text-xs text-muted-foreground">
         {t.format("lineup.compositions", compositionCount)}
       </span>
+      {!fieldsOwnTeam && compositionCount > 0 && (
+        <p
+          className={cn("w-full text-xs", VALUE_COLORS.cap)}
+          title={t.ui("lineup.ownTeamExcludedTip")}
+        >
+          {t.ui("lineup.ownTeamExcluded")}
+        </p>
+      )}
     </div>
   );
 }
@@ -492,14 +518,20 @@ function TemplateCard({
   const accountData = useActiveAccountData();
   const characterStats = useResource(characterStatsResource);
 
-  const compositionCount = useMemo(
+  const compositions = useMemo(
     () =>
       team
         ? templateCompositions(template, team, (charId) =>
             getCharacterTraits(charId, characterStats ?? undefined)
-          ).length
-        : 0,
+          )
+        : [],
     [template, team, characterStats]
+  );
+  const ownMembers = team ? teamCharacters(team) : [];
+  const fieldsOwnTeam = compositions.some(
+    (composition) =>
+      composition.length === ownMembers.length &&
+      ownMembers.every((charId) => composition.includes(charId))
   );
 
   const deleteButton = (
@@ -586,7 +618,8 @@ function TemplateCard({
       <FlexSlots template={template} team={team} />
       <CompositionRules
         template={template}
-        compositionCount={compositionCount}
+        compositionCount={compositions.length}
+        fieldsOwnTeam={fieldsOwnTeam}
       />
       {encounters.length > 0 && (
         <div className="flex flex-col gap-1.5">

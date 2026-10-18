@@ -13,6 +13,16 @@ export const SET_JOINT_ASSIGNMENT_CAP = 2401;
 /** Top joint assignments re-scored with generated artifacts (~60 ms each). */
 export const SET_GENERATED_REFINE_COUNT = 48;
 
+/** Best choices per member on the account's own pieces, kept and re-scored. */
+export const SET_SCREEN_TOP_ACCOUNT = 3;
+
+/** Piece picks per account estimate: at the generated build, then again at
+ *  the real pieces the first pick found. */
+export const SET_ACCOUNT_ESTIMATE_PASSES = 2;
+
+/** Re-picks that value a short stat more, for members short of ER or CR. */
+export const SET_ACCOUNT_REQUIREMENT_RETRIES = 3;
+
 /** Choices per member whose best assignment is always re-scored and listed. */
 export const SET_WITNESS_CHOICES_PER_MEMBER = 4;
 
@@ -58,18 +68,25 @@ export const LINEUP_RANKED_COMPOSITIONS = 64;
 /** Compositions per template and encounter whose sets are screened. */
 export const LINEUP_SCREENED_COMPOSITIONS = 4;
 
-/** Real-inventory runs per template and encounter. */
-export const LINEUP_MAX_RUNS = 6;
+/** Real-inventory runs per template and encounter, at most. Longer time
+ *  budgets buy more runs, each at least `SET_MIN_RUN_MS`. */
+export const LINEUP_MAX_RUNS = 24;
 
 /** Re-runs per chamber that keep clear of the other half's gear. */
 export const LINEUP_MAX_DIVERSIFY_RUNS = 4;
 
+/** A member whose artifact stats are worth less than this share of team
+ *  damage takes any pieces that form its set. */
+export const LINEUP_ANY_PIECES_PERCENT = 2;
+
 /** Contested pieces, characters and weapons re-solved without, per lineup. */
 export const LINEUP_BINDING_CHECKS = 16;
 
-export const LINEUP_TIME_BUDGET_OPTIONS_SEC = [30, 60, 120] as const;
+export const LINEUP_TIME_BUDGET_OPTIONS_SEC = [
+  30, 120, 300, 600, 1200,
+] as const;
 
-export const LINEUP_DEFAULT_TIME_BUDGET_SEC = 30;
+export const LINEUP_DEFAULT_TIME_BUDGET_SEC = 120;
 
 /** Format tag and version of a lineup run's debug export. */
 export const LINEUP_DEBUG_FORMAT = "genshintools-lineup-debug";

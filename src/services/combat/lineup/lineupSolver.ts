@@ -14,6 +14,7 @@
  */
 
 import { TIER_LIST_SUPPORT_ARTIFACT_SETS } from "@/config/gameConstants";
+import { getAllArtifacts } from "@/domain/build/artifact/inventory";
 import {
   buildBuffOverrides,
   extractComboOverrides,
@@ -30,6 +31,7 @@ import {
   calibrateCandidates,
   candidateArtifactIds,
   candidateWeaponUses,
+  countSetSlotPieces,
   findContestedGear,
 } from "@/domain/combat/lineup/candidates";
 import {
@@ -39,6 +41,7 @@ import {
   resolveTeamObjective,
 } from "@/domain/combat/lineup/compositions";
 import {
+  LINEUP_ANY_PIECES_PERCENT,
   LINEUP_MAX_DIVERSIFY_RUNS,
   LINEUP_MAX_RUNS,
   LINEUP_RANKED_COMPOSITIONS,
@@ -50,14 +53,17 @@ import {
   pickBestOutcome,
   selectFinalists,
 } from "@/domain/combat/lineup/setAssignments";
+import { assignmentKey } from "@/domain/combat/lineup/setChoices";
 import {
+  estimateOnAccount,
   evaluateAssignment,
+  findPieceInsensitiveMembers,
   generateAssignmentSheets,
   makeAssignmentTeam,
   runSetConfigScreen,
   type SetScreenInput,
 } from "@/domain/combat/lineup/setConfigScreen";
-import type { Slot, StatKey } from "@/domain/enums";
+import { allSlots, type Slot, type StatKey } from "@/domain/enums";
 import type { ArtifactData } from "@/domain/models";
 import { artifactsById } from "@/domain/reference/catalog";
 import type {
@@ -99,7 +105,7 @@ import {
   buildTeamSlotConfigs,
   detectEquippedSets,
 } from "@/domain/team/teamConfigUtils";
-import type { TeamSetupConfig } from "@/domain/team/types";
+import type { TeamComp, TeamSetupConfig } from "@/domain/team/types";
 import { collectOwnedWeaponCopies } from "@/domain/team/weaponCopies";
 import {
   optimizeAssignmentOnAccount,
@@ -131,9 +137,13 @@ interface SolverState {
   chars: CharacterStatsMap;
   weapons: WeaponStatsMap;
   weaponCopies: Record<string, number>;
-  /** Real-inventory runs per task, and the time each gets. */
+  setSlotCounts: Record<string, number>;
+  /** Pieces members whose pieces matter may use; null: every piece. */
+  keeperIds: ReadonlySet<string> | null;
+  /** Real-inventory runs per task, and the time each gets (null: until
+   *  done). */
   runCount: number;
-  runMs: number;
+  runMs: number | null;
   candidates: LineupCandidate[];
   issues: LineupIssue[];
   sources: Map<string, CandidateSource>;
@@ -332,6 +342,7 @@ function addCandidate(
       refinement: config.refinement,
       artifactSet: account.realized[config.charId] ?? null,
       artifacts: account.artifactsByChar[config.charId],
+      anyPieces: false,
     })),
     damage: account.damage,
     ratio: account.damage / referenceDamage,
@@ -340,25 +351,9 @@ function addCandidate(
   const key = candidateKey(candidate);
   const listed = state.byGear.get(key);
   if (listed) return listed;
-  state.byGear.set(key, candidate);
-  state.candidates.push(candidate);
-  state.sources.set(candidate.id, source);
-  state.trace.memberStats[candidate.id] = memberStats(
-    state,
-    { ...source.job.screen, configs: [...configs] },
-    account
-  );
-  return candidate;
-}
-
-/** Each member's final stats on the scored pieces, for the trace. */
-function memberStats(
-  state: SolverState,
-  screen: SetScreenInput,
-  account: SetAccountOutcome
-): Record<string, LineupMemberStats> {
+  const screen = { ...source.job.screen, configs: [...configs] };
   const sheets = Object.fromEntries(
-    screen.configs.map((config) => [
+    configs.map((config) => [
       config.charId,
       StatSheet.fromArtifacts(
         Object.values(account.artifactsByChar[config.charId] ?? {}).filter(
@@ -367,8 +362,37 @@ function memberStats(
       ),
     ])
   );
+  const loose = new Set(
+    findPieceInsensitiveMembers(
+      screen,
+      account.realized,
+      sheets,
+      LINEUP_ANY_PIECES_PERCENT
+    )
+  );
+  for (const member of candidate.members)
+    member.anyPieces = loose.has(member.charId);
+  state.byGear.set(key, candidate);
+  state.candidates.push(candidate);
+  state.sources.set(candidate.id, source);
+  state.trace.memberStats[candidate.id] = memberStats(
+    state,
+    screen,
+    account.realized,
+    sheets
+  );
+  return candidate;
+}
+
+/** Each member's final stats on the scored pieces, for the trace. */
+function memberStats(
+  state: SolverState,
+  screen: SetScreenInput,
+  realized: SetAssignment,
+  sheets: Record<string, StatSheet>
+): Record<string, LineupMemberStats> {
   try {
-    const stats = makeAssignmentTeam(screen, account.realized).getTeamStats(
+    const stats = makeAssignmentTeam(screen, realized).getTeamStats(
       sheets,
       screen.carryCharId,
       screen.displayContext
@@ -396,9 +420,8 @@ function memberStats(
 /** Optimize an assignment on the account and record the run in the trace. */
 async function tracedRun(
   state: SolverState,
-  kind: LineupRunKind,
+  run: Pick<PlannedRun, "kind" | "generatedDamage" | "accountEstimate">,
   source: CandidateSource,
-  generatedDamage: number | null,
   excludedIds: readonly string[],
   add: (outcome: SetAccountOutcome) => LineupCandidate | null
 ): Promise<LineupCandidate | null> {
@@ -411,14 +434,19 @@ async function tracedRun(
     new Set(excludedIds)
   );
   const elapsedMs = performance.now() - start;
-  const candidate = add(outcome);
+  // A member whose search timed out got a quick fill, not a search result.
+  const timedOut = Object.values(outcome.failReasons).some(
+    (reason) => reason.kind === "timeout"
+  );
+  const candidate = timedOut ? null : add(outcome);
   state.trace.runs.push({
-    kind,
+    kind: run.kind,
     templateId: task.team.template.id,
     encounterId: task.encounter.id,
     charIds: job.charIds,
     assignment,
-    generatedDamage,
+    generatedDamage: run.generatedDamage,
+    accountEstimate: run.accountEstimate,
     excludedArtifactCount: excludedIds.length,
     runMs: state.runMs,
     elapsedMs,
@@ -441,14 +469,30 @@ interface ScreenedComposition {
   best: number;
 }
 
+/** A composition at its current sets, on generated artifacts and on the
+ *  account's pieces. */
+interface RankedComposition {
+  job: TeamSetsJob;
+  generatedDamage: number;
+  accountEstimate: number | null;
+}
+
+/** Account estimate first; compositions the account cannot field at their
+ *  current sets go last, by generated damage. */
+function byStrength(a: RankedComposition, b: RankedComposition): number {
+  if (a.accountEstimate != null && b.accountEstimate != null)
+    return b.accountEstimate - a.accountEstimate;
+  if (a.accountEstimate != null) return -1;
+  if (b.accountEstimate != null) return 1;
+  return b.generatedDamage - a.generatedDamage;
+}
+
 /**
- * Compositions worth screening: the best on generated artifacts at their
- * current sets, the best without each member of it that some composition
- * leaves out, then the next best.
+ * Compositions worth screening: the strongest at their current sets, the
+ * strongest without each member of it that some composition leaves out, then
+ * the next strongest.
  */
-function pickCompositions(
-  ranked: readonly { job: TeamSetsJob; damage: number }[]
-): TeamSetsJob[] {
+function pickCompositions(ranked: readonly RankedComposition[]): TeamSetsJob[] {
   if (ranked.length === 0) return [];
   const picked = new Set([ranked[0]]);
   const avoidable = ranked[0].job.charIds.filter((charId) =>
@@ -464,7 +508,8 @@ function pickCompositions(
     .map(({ job }) => job);
 }
 
-/** Screens a composition's sets and orders its finalists, best first. */
+/** Screens a composition's sets and orders its finalists by their account
+ *  estimate, best first. */
 async function screenComposition(
   job: TeamSetsJob
 ): Promise<ScreenedComposition | null> {
@@ -472,7 +517,7 @@ async function screenComposition(
   if (!output) return null;
   const { outcomes, currentIndex } = output;
   const score = (outcome: SetAssignmentOutcome) =>
-    outcome.generatedDamage ?? null;
+    outcome.accountEstimate ?? null;
   const best =
     pickBestOutcome(
       outcomes,
@@ -492,12 +537,77 @@ async function screenComposition(
     pinned: {},
     max: LINEUP_MAX_RUNS,
   });
+  // Longer budgets run further down the estimates.
+  const rest = outcomes
+    .flatMap((outcome, i) => (score(outcome) == null ? [] : [i]))
+    .sort((a, b) => (score(outcomes[b]) ?? 0) - (score(outcomes[a]) ?? 0));
   return {
     job,
     outcomes,
     best,
-    order: [best, ...finalists.filter((i) => i !== best)],
+    order: [...new Set([best, ...finalists, ...rest])],
   };
+}
+
+const sameMembers = (a: readonly string[], b: readonly string[]) =>
+  a.length === b.length && a.every((charId) => b.includes(charId));
+
+/**
+ * The recorded build as a candidate, so no lineup does worse than what was
+ * played. Only when its members are one of the template's compositions and
+ * every piece is still on the account.
+ */
+function addRecordedCandidate(
+  state: SolverState,
+  task: Task,
+  job: TeamSetsJob,
+  referenceDamage: number
+): void {
+  const { reference } = task.calibration;
+  const owned = new Set(
+    getAllArtifacts(state.request.accountData).map((artifact) => artifact.id)
+  );
+  const pieces = Object.values(reference.artifactsByChar).flat();
+  if (pieces.some((artifact) => !owned.has(artifact.id))) return;
+  const sets = recordedSets(reference);
+  const artifactsByChar: ArtifactsByChar = Object.fromEntries(
+    reference.slots.map(({ charId }) => [
+      charId,
+      Object.fromEntries(
+        allSlots.map((slot) => [
+          slot,
+          reference.artifactsByChar[charId]?.find(
+            (artifact) => artifact.slotKey === slot
+          ) ?? null,
+        ])
+      ) as Record<Slot, ArtifactData | null>,
+    ])
+  );
+  addCandidate(
+    state,
+    { task, job, assignment: sets, referenceDamage },
+    reference.slots.map((slot) => ({
+      ...slot,
+      artifactSet: sets[slot.charId] ?? null,
+    })),
+    {
+      damage: referenceDamage,
+      realized: sets,
+      artifactsByChar,
+      failReasons: {},
+      unmetCharIds: [],
+    },
+    "recorded"
+  );
+}
+
+/** A real-inventory run to make for a task. */
+interface PlannedRun {
+  kind: LineupRunKind;
+  job: TeamSetsJob;
+  assignment: SetAssignment;
+  generatedDamage: number | null;
+  accountEstimate: number | null;
 }
 
 async function generateTaskCandidates(
@@ -521,8 +631,9 @@ async function generateTaskCandidates(
     objective.id
   );
   const teamCharIds = teamConfigs.map((config) => config.charId);
+  const { reference } = task.calibration;
   const referenceDamage = scoreReference(
-    task.calibration.reference,
+    reference,
     task,
     objective,
     singleFormula,
@@ -530,32 +641,26 @@ async function generateTaskCandidates(
     contexts.display,
     userBuffOverrides
   );
+  const referenceSets = recordedSets(reference);
   const taskTrace: LineupTaskTrace = {
     templateId: template.id,
     encounterId: task.encounter.id,
     referenceDamage,
-    referenceSets: recordedSets(task.calibration.reference),
+    referenceSets,
     compositions: [],
+    screenMs: 0,
     screens: [],
   };
   state.trace.tasks.push(taskTrace);
   if (referenceDamage == null) return "reference-unscored";
 
-  const traits = (charId: string) => getCharacterTraits(charId, chars);
-  const jobs: TeamSetsJob[] = [];
-  for (const composition of templateCompositions(
-    template,
-    teamComp,
-    traits
-  ).slice(0, LINEUP_RANKED_COMPOSITIONS)) {
-    const fielded = fieldComposition(template, teamComp, composition, account);
-    if (!fielded) continue;
-    const configs = buildTeamSlotConfigs(fielded, setupConfig, account);
-    if (configs.length !== composition.length) continue;
-    const team = tryTeamBuild(configs, setupConfig, contexts.display);
-    const combo =
-      team && compositionObjective(objective, singleFormula, team, teamCharIds);
-    if (!combo) continue;
+  /** A composition's set job; `openCharIds` may use pieces besides the
+   *  keepers. Null when the calculator cannot build it. */
+  const prepare = (
+    fielded: TeamComp,
+    combo: ComboFormula,
+    openCharIds: readonly string[]
+  ): TeamSetsJob | null => {
     try {
       const setup = prepareTeamSetsJob(
         {
@@ -571,34 +676,89 @@ async function generateTaskCandidates(
             useAccountArtifacts: true,
             lockedCharIds: [],
             pinned: {},
-            timeBudgetSec: request.timeBudgetSec,
+            // The lineup job times its own runs.
+            timeBudgetSec: 0,
           },
+          keepers: state.keeperIds
+            ? { ids: state.keeperIds, openCharIds }
+            : undefined,
         },
         chars
       );
-      if (setup.kind === "ready") jobs.push(setup.job);
+      return setup.kind === "ready" ? setup.job : null;
     } catch {
-      /* A composition the calculator cannot build is skipped. */
+      return null;
     }
+  };
+
+  const traits = (charId: string) => getCharacterTraits(charId, chars);
+  const jobs: TeamSetsJob[] = [];
+  for (const composition of templateCompositions(
+    template,
+    teamComp,
+    traits
+  ).slice(0, LINEUP_RANKED_COMPOSITIONS)) {
+    const fielded = fieldComposition(template, teamComp, composition, account);
+    if (!fielded) continue;
+    const configs = buildTeamSlotConfigs(fielded, setupConfig, account);
+    if (configs.length !== composition.length) continue;
+    const team = tryTeamBuild(configs, setupConfig, contexts.display);
+    const combo =
+      team && compositionObjective(objective, singleFormula, team, teamCharIds);
+    const job = combo && prepare(fielded, combo, []);
+    if (job) jobs.push(job);
   }
   if (jobs.length === 0) return "no-composition";
 
+  const screenStart = performance.now();
   const screenSteps =
     jobs.length + Math.min(jobs.length, LINEUP_SCREENED_COMPOSITIONS);
-  const ranked: { job: TeamSetsJob; damage: number }[] = [];
-  for (const [index, job] of jobs.entries()) {
+  const ranked: RankedComposition[] = [];
+  for (const [index, initial] of jobs.entries()) {
     progress("screen", index, screenSteps);
+    let job = initial;
     const sheets = await generateAssignmentSheets(job.screen, job.current);
-    const damage = sheets
+    // Members whose pieces don't matter may wear any piece, kept or not.
+    const open =
+      sheets && state.keeperIds
+        ? findPieceInsensitiveMembers(
+            job.screen,
+            job.current,
+            sheets,
+            LINEUP_ANY_PIECES_PERCENT
+          )
+        : [];
+    const reopened =
+      open.length > 0
+        ? prepare(job.request.teamComp, job.request.objective, open)
+        : null;
+    if (reopened) jobs[index] = job = reopened;
+    const generatedDamage = sheets
       ? evaluateAssignment(job.screen, job.current, sheets)
       : null;
-    if (damage != null) ranked.push({ job, damage });
+    if (sheets && generatedDamage != null)
+      ranked.push({
+        job,
+        generatedDamage,
+        accountEstimate: estimateOnAccount(job.screen, job.current, sheets),
+      });
   }
-  ranked.sort((a, b) => b.damage - a.damage);
-  taskTrace.compositions = ranked.map(({ job, damage }) => ({
-    charIds: job.charIds,
-    damage,
-  }));
+  ranked.sort(byStrength);
+  const recordedJob = jobs.find((job) =>
+    sameMembers(
+      job.charIds,
+      reference.slots.map((slot) => slot.charId)
+    )
+  );
+  if (recordedJob)
+    addRecordedCandidate(state, task, recordedJob, referenceDamage);
+  taskTrace.compositions = ranked.map(
+    ({ job, generatedDamage, accountEstimate }) => ({
+      charIds: job.charIds,
+      generatedDamage,
+      accountEstimate,
+    })
+  );
   const picked = pickCompositions(ranked);
   if (picked.length === 0) return "no-composition";
 
@@ -608,47 +768,74 @@ async function generateTaskCandidates(
     const entry = await screenComposition(job);
     if (entry) screened.push(entry);
   }
+  taskTrace.screenMs = performance.now() - screenStart;
   if (screened.length === 0) return "no-composition";
-  screened.sort(
-    (a, b) =>
-      (b.outcomes[b.best].generatedDamage ?? 0) -
-      (a.outcomes[a.best].generatedDamage ?? 0)
-  );
+  const bestEstimate = (entry: ScreenedComposition) =>
+    entry.outcomes[entry.best].accountEstimate ?? Number.NEGATIVE_INFINITY;
+  screened.sort((a, b) => bestEstimate(b) - bestEstimate(a));
   taskTrace.screens = screened.map((entry) => ({
     charIds: entry.job.charIds,
-    outcomes: entry.order.slice(0, TRACED_OUTCOMES).flatMap((index) => {
-      const { assignment, generatedDamage } = entry.outcomes[index];
-      return generatedDamage == null ? [] : [{ assignment, generatedDamage }];
-    }),
+    outcomes: entry.order.slice(0, TRACED_OUTCOMES).map((index) => ({
+      assignment: entry.outcomes[index].assignment,
+      generatedDamage: entry.outcomes[index].generatedDamage ?? null,
+      accountEstimate: entry.outcomes[index].accountEstimate ?? null,
+    })),
   }));
 
-  // Round-robin: every composition's best, then each one's next finalist.
-  const runs: { entry: ScreenedComposition; index: number }[] = [];
+  // The recorded sets on the account first, then round-robin: every
+  // composition's best, then each one's next finalist.
+  const runs: PlannedRun[] = recordedJob
+    ? [
+        {
+          kind: "recorded-sets",
+          job: recordedJob,
+          assignment: referenceSets,
+          generatedDamage: null,
+          accountEstimate: null,
+        },
+      ]
+    : [];
+  const planned = new Set(
+    runs.map((run) => assignmentKey(run.assignment, run.job.charIds))
+  );
   for (let rank = 0; runs.length < state.runCount; rank++) {
     const next = screened.filter((entry) => rank < entry.order.length);
     if (next.length === 0) break;
-    for (const entry of next)
-      if (runs.length < state.runCount)
-        runs.push({ entry, index: entry.order[rank] });
+    for (const entry of next) {
+      if (runs.length >= state.runCount) break;
+      const outcome = entry.outcomes[entry.order[rank]];
+      const key = assignmentKey(outcome.assignment, entry.job.charIds);
+      if (planned.has(key)) continue;
+      planned.add(key);
+      runs.push({
+        kind: "search",
+        job: entry.job,
+        assignment: outcome.assignment,
+        generatedDamage: outcome.generatedDamage ?? null,
+        accountEstimate: outcome.accountEstimate ?? null,
+      });
+    }
   }
 
-  let found = 0;
-  for (const [done, { entry, index }] of runs.entries()) {
+  for (const [done, run] of runs.entries()) {
     progress("optimize", done, runs.length);
-    const { assignment, generatedDamage } = entry.outcomes[index];
-    const source = { task, job: entry.job, assignment, referenceDamage };
-    const candidate = await tracedRun(
-      state,
-      "search",
-      source,
-      generatedDamage ?? null,
-      [],
-      (outcome) =>
-        addCandidate(state, source, entry.job.configs, outcome, "search")
+    const source = {
+      task,
+      job: run.job,
+      assignment: run.assignment,
+      referenceDamage,
+    };
+    await tracedRun(state, run, source, [], (outcome) =>
+      addCandidate(state, source, run.job.configs, outcome, "search")
     );
-    if (candidate) found++;
   }
-  return found > 0 ? null : "no-candidate";
+  return state.candidates.some(
+    (candidate) =>
+      candidate.templateId === template.id &&
+      candidate.encounterId === task.encounter.id
+  )
+    ? null
+    : "no-candidate";
 }
 
 /**
@@ -764,13 +951,17 @@ async function rerunWithout(
   if (setup.kind !== "ready") return null;
   const screened = await screenComposition(setup.job);
   if (!screened) return null;
-  const { assignment, generatedDamage } = screened.outcomes[screened.best];
+  const { assignment, generatedDamage, accountEstimate } =
+    screened.outcomes[screened.best];
   const rerun = { ...source, job: setup.job, assignment };
   return tracedRun(
     state,
-    "pieces-excluded",
+    {
+      kind: "pieces-excluded",
+      generatedDamage: generatedDamage ?? null,
+      accountEstimate: accountEstimate ?? null,
+    },
     rerun,
-    generatedDamage ?? null,
     excludedIds,
     (outcome) =>
       addCandidate(state, rerun, setup.job.configs, outcome, "pieces-excluded")
@@ -995,18 +1186,36 @@ export async function runLineupSolver(
     report({ type: "error", reason: "no-calibrations" });
     return;
   }
-  const budgetMs = Math.max(1, request.timeBudgetSec) * 1000;
-  const runCount = Math.min(
-    LINEUP_MAX_RUNS,
-    Math.max(1, Math.floor(budgetMs / SET_MIN_RUN_MS))
-  );
+  const budgetMs =
+    request.timeBudgetSec == null
+      ? null
+      : Math.max(1, request.timeBudgetSec) * 1000;
+  const runCount =
+    budgetMs == null
+      ? LINEUP_MAX_RUNS
+      : Math.min(
+          LINEUP_MAX_RUNS,
+          Math.max(1, Math.floor(budgetMs / SET_MIN_RUN_MS))
+        );
   const state: SolverState = {
     request,
     chars,
     weapons,
     weaponCopies: countWeaponCopies(request.accountData),
+    setSlotCounts: countSetSlotPieces(getAllArtifacts(request.accountData)),
+    // Recorded builds' pieces stay usable, so their sets can run again.
+    keeperIds: request.keeperArtifactIds
+      ? new Set([
+          ...request.keeperArtifactIds,
+          ...request.calibrations.flatMap((calibration) =>
+            Object.values(calibration.reference.artifactsByChar).flatMap(
+              (pieces) => pieces.map((artifact) => artifact.id)
+            )
+          ),
+        ])
+      : null,
     runCount,
-    runMs: budgetMs / runCount,
+    runMs: budgetMs == null ? null : budgetMs / runCount,
     candidates: [],
     issues: [],
     sources: new Map(),
@@ -1018,6 +1227,7 @@ export async function runLineupSolver(
     candidates: [...state.candidates],
     issues: [...state.issues],
     weaponCopies: state.weaponCopies,
+    setSlotCounts: state.setSlotCounts,
     trace: {
       tasks: [...state.trace.tasks],
       runs: [...state.trace.runs],

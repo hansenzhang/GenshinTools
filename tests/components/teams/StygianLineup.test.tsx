@@ -54,6 +54,7 @@ function candidate(
         refinement: 1,
         artifactSet: null,
         artifacts: NO_PIECES,
+        anyPieces: false,
       },
     ],
     damage: ratio,
@@ -107,6 +108,7 @@ const RESULT = {
   ],
   issues: [],
   weaponCopies: {},
+  setSlotCounts: {},
   trace: { tasks: [], runs: [], memberStats: {} },
   partial: false,
 };
@@ -120,6 +122,7 @@ beforeEach(() => {
     progress: null,
     error: null,
     isComputing: false,
+    startedAt: null,
     start: vi.fn(),
     stop: vi.fn(),
   };

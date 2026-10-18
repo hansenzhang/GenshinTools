@@ -277,6 +277,25 @@ describe("runLineupSolver", () => {
     expect(best.margin).toBeCloseTo((best.ratio * 110) / 90, 10);
   });
 
+  it("keeps members whose pieces matter to the kept pieces", async () => {
+    // No piece is kept, so only the recorded build's pieces remain usable.
+    const input = request({
+      teams: [teamA],
+      calibrations: [calibrate(teamA, "first")],
+      keeperArtifactIds: [],
+    });
+    const result = finalResult(await run(input));
+    const recorded = new Set(
+      Object.values(input.calibrations[0].reference.artifactsByChar).flatMap(
+        (pieces) => pieces.map((artifact) => artifact.id)
+      )
+    );
+    expect(result.candidates.length).toBeGreaterThan(0);
+    for (const candidate of result.candidates)
+      for (const id of candidateArtifactIds(candidate))
+        expect(recorded.has(id)).toBe(true);
+  }, 120_000);
+
   it("finds a conflict-free pairing when both halves want the same gear", async () => {
     const messages = await run(request());
     expect(messages.some((message) => message.type === "partial")).toBe(true);
@@ -294,9 +313,13 @@ describe("runLineupSolver", () => {
       // margin = r · (T_req − D) / (T_meas − D) with r against the clear.
       expect(candidate.margin).toBeCloseTo((candidate.ratio * 110) / 90, 10);
       expect(candidate.activeSeconds).toBeCloseTo(90 / candidate.ratio, 10);
+      // Members whose stats don't move damage take any pieces of their set.
+      for (const member of candidate.members)
+        expect(Object.values(member.artifacts).every(Boolean)).toBe(true);
+      const exact = candidate.members.filter((member) => !member.anyPieces);
       const ids = candidateArtifactIds(candidate);
-      expect(ids).toHaveLength(10);
-      expect(new Set(ids).size).toBe(10);
+      expect(ids).toHaveLength(5 * exact.length);
+      expect(new Set(ids).size).toBe(ids.length);
     }
     const first = result.candidates.filter((c) => c.encounterId === "first");
     const second = result.candidates.filter((c) => c.encounterId === "second");
@@ -321,7 +344,18 @@ describe("runLineupSolver", () => {
       expect(task.screens[0].outcomes.length).toBeGreaterThan(0);
     }
     const runKinds = new Set(trace.runs.map((entry) => entry.kind));
-    expect(runKinds).toEqual(new Set(["search", "pieces-excluded"]));
+    expect(runKinds).toEqual(
+      new Set(["recorded-sets", "search", "pieces-excluded"])
+    );
+    // Each half also lists its recorded build, at r = 1.
+    for (const encounterId of ["first", "second"]) {
+      const recorded = result.candidates.filter(
+        (entry) =>
+          entry.encounterId === encounterId && entry.origin === "recorded"
+      );
+      expect(recorded).toHaveLength(1);
+      expect(recorded[0].ratio).toBe(1);
+    }
     const ids = new Set(result.candidates.map((entry) => entry.id));
     for (const entry of trace.runs) {
       expect(entry.elapsedMs).toBeGreaterThan(0);

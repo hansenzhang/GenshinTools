@@ -52,6 +52,7 @@ function candidate(
           },
         ])
       ) as Record<Slot, ArtifactData | null>,
+      anyPieces: false,
     })),
     damage: margin,
     ratio: margin,
@@ -220,5 +221,58 @@ describe("planStygianRun", () => {
     expect(result.missingEncounterIds).toEqual(["b"]);
     expect(result.plans[0].candidateIds).toEqual({ a: "a1", c: "c1" });
     expect(result.binding).toEqual([]);
+  });
+
+  it("bounds members that take any pieces by the pieces of their set", () => {
+    // a1's and b1's supports only need four Tenacity pieces each, and wear
+    // the same flower.
+    const TENACITY = "tenacity_of_the_millelith";
+    const loose = (entry: CalibratedCandidate): CalibratedCandidate => ({
+      ...entry,
+      members: entry.members.map((member) => ({
+        ...member,
+        anyPieces: true,
+        artifactSet: { type: "4pc", setId: TENACITY },
+        artifacts: Object.fromEntries(
+          Object.entries(member.artifacts).map(([slot, artifact]) => [
+            slot,
+            artifact && { ...artifact, setKey: TENACITY },
+          ])
+        ) as Record<Slot, ArtifactData | null>,
+      })),
+    });
+    const lineup = [
+      loose(candidate("a1", "a", 1.5, ["bennett"], { piece: "flower" })),
+      loose(candidate("b1", "b", 1.4, ["diona"], { piece: "flower" })),
+      candidate("b2", "b", 1.1, ["layla"]),
+      candidate("c1", "c", 1.3, ["raiden"]),
+    ];
+    const counts = (perSlot: number) =>
+      Object.fromEntries(
+        SLOTS.flatMap((slot) => [
+          [`${TENACITY}:${slot}`, perSlot],
+          [`noblesse_oblige:${slot}`, 10],
+        ])
+      );
+    const plenty = planStygianRun(
+      { ...request(lineup), setSlotCounts: counts(2) },
+      solve
+    );
+    expect(plenty.plans[0].candidateIds).toEqual({
+      a: "a1",
+      b: "b1",
+      c: "c1",
+    });
+    // The shared flower is not contested: either support takes another.
+    expect(plenty.binding).toEqual([]);
+    const scarce = planStygianRun(
+      { ...request(lineup), setSlotCounts: counts(1) },
+      solve
+    );
+    expect(scarce.plans[0].candidateIds).toEqual({
+      a: "a1",
+      b: "b2",
+      c: "c1",
+    });
   });
 });

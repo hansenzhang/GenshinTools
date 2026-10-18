@@ -100,7 +100,10 @@ export function getArtifactCr(art: ArtifactData | null): number {
   return cr;
 }
 
-function getArtifactStats(art: ArtifactData): Partial<Record<StatKey, number>> {
+/** A piece's main stat at its level plus its substats, in internal units. */
+export function getArtifactStats(
+  art: ArtifactData
+): Partial<Record<StatKey, number>> {
   const stats: Partial<Record<StatKey, number>> = {};
   const mainVal = toInternal(
     art.mainStatKey,

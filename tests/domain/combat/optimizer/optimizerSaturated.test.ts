@@ -316,6 +316,39 @@ describe("Saturated character handling", () => {
     }
   });
 
+  it("treats an ER requirement base ER already meets as none", async () => {
+    const run = async (minEr: number) => {
+      let result: Awaited<ReturnType<typeof gen.next>>["value"] | undefined;
+      const gen = runTeamOptimization({
+        teamBuild,
+        carryCharId: "hu_tao",
+        combo: singleFormulaCombo("hu_tao", formulaId),
+        inventory,
+        calcContext: {
+          enemyLevel: 90,
+          enemyRes: 10,
+          rollMultiplier: 0.85,
+          substatBudget: "8_6" as const,
+        },
+        baseSheets,
+        perChar: {
+          hu_tao: {
+            minEr: 1,
+            minCr: 0,
+            artifactSet: { type: "4pc", setId: "crimson_witch_of_flames" },
+          },
+          bennett: { minEr, minCr: 0 },
+        },
+      });
+      for await (const yielded of gen) result = yielded;
+      if (!result?.done) throw new Error("The optimizer did not finish.");
+      return result;
+    };
+    // 100% is the default requirement: Bennett's base ER meets it.
+    expect((await run(1)).saturatedCharIds).toEqual(["bennett"]);
+    expect((await run(1.6)).saturatedCharIds).toEqual([]);
+  });
+
   it("saturated def%-scaling support prefers def% substats via supStat fallback", async () => {
     // Swap Bennett → Gorou (supStat: ["def%"]). Gorou's buffs don't affect
     // Hu Tao's pyro damage (geo-only DMG bonus; def% scaling is for Geo

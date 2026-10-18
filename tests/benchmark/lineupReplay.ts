@@ -10,7 +10,7 @@
  *
  * Usage:
  *   npx tsx --tsconfig tsconfig.app.json tests/benchmark/lineupReplay.ts \
- *     --file <lineup-debug.json> [--no-run] [--budget-sec 30] [--trace]
+ *     --file <lineup-debug.json> [--no-run] [--budget-sec 30|0] [--trace]
  *     [--dump <replayed.json>]
  *
  * Node has no Worker, so the optimizer runs its inline single-thread path.
@@ -103,7 +103,7 @@ function printCandidate(
       )
       .join(" · ");
     console.log(
-      `    ${member.charId} — ${member.weaponId} R${member.refinement} — ${setLabel(member.artifactSet)}`
+      `    ${member.charId} — ${member.weaponId} R${member.refinement} — ${setLabel(member.artifactSet)}${member.anyPieces ? " (any pieces)" : ""}`
     );
     if (statLine) console.log(`      ${statLine}`);
     for (const slot of allSlots) {
@@ -131,17 +131,26 @@ function printTrace(result: LineupSolverResult): void {
     console.log(
       `  recorded sets: ${assignmentLabel(task.referenceSets, recordedIds)}`
     );
-    console.log("  compositions (generated, current sets):");
+    console.log(`  screening took ${(task.screenMs / 1000).toFixed(1)} s`);
+    const share = (damage: number | null) =>
+      damage == null
+        ? "—"
+        : `×${(damage / (task.referenceDamage ?? 1)).toFixed(3)}`;
+    console.log(
+      "  compositions at current sets (account estimate, generated; × recorded):"
+    );
     for (const entry of task.compositions)
       console.log(
-        `    ${entry.charIds.join(",")} ${entry.damage.toFixed(0)} (×${(entry.damage / (task.referenceDamage ?? 1)).toFixed(3)} of recorded)`
+        `    ${entry.charIds.join(",")} ${share(entry.accountEstimate)} ${share(entry.generatedDamage)}`
       );
-    console.log("  screened sets (generated), in run order:");
+    console.log(
+      "  finalists in run order (account estimate, generated; × recorded):"
+    );
     for (const screen of task.screens) {
       console.log(`    ${screen.charIds.join(",")}`);
       for (const outcome of screen.outcomes)
         console.log(
-          `      ${outcome.generatedDamage.toFixed(0)} ${assignmentLabel(outcome.assignment, screen.charIds)}`
+          `      ${share(outcome.accountEstimate)} ${share(outcome.generatedDamage)} ${assignmentLabel(outcome.assignment, screen.charIds)}`
         );
     }
     const runs = result.trace.runs.filter(
@@ -159,7 +168,7 @@ function printTrace(result: LineupSolverResult): void {
         .map(([charId, reason]) => `${charId}:${reason.kind}`)
         .join(",");
       console.log(
-        `    ${run.kind} ${ratio} in ${(run.elapsedMs / 1000).toFixed(1)}s of ${(run.runMs / 1000).toFixed(1)}s` +
+        `    ${run.kind} ${ratio} (estimate ${share(run.accountEstimate)}) in ${(run.elapsedMs / 1000).toFixed(1)}s of ${run.runMs == null ? "until done" : `${(run.runMs / 1000).toFixed(1)}s`}` +
           `${run.excludedArtifactCount ? ` excl ${run.excludedArtifactCount}` : ""}` +
           `${fails ? ` failed ${fails}` : ""}` +
           `${run.saturatedCharIds.length ? ` saturated ${run.saturatedCharIds.join(",")}` : ""}` +
@@ -191,7 +200,8 @@ async function plan(
         result.weaponCopies,
         "per-half",
         LINEUP_MARGIN_TIE_PERCENT,
-        LINEUP_PAIRINGS_SHOWN
+        LINEUP_PAIRINGS_SHOWN,
+        result.setSlotCounts
       ),
     };
   const highs = await loadHighs();
@@ -202,6 +212,7 @@ async function plan(
         encounterIds: encounters.map((encounter) => encounter.id),
         candidates: calibrated,
         weaponCopies: result.weaponCopies,
+        setSlotCounts: result.setSlotCounts,
         tiePercent: LINEUP_MARGIN_TIE_PERCENT,
       },
       (model) => solveMilp(highs, model)
@@ -289,9 +300,16 @@ async function main(): Promise<void> {
     characterStatsResource.preload(),
     weaponStatsResource.preload(),
   ]);
+  // --budget-sec 0 runs every finalist until done.
+  const budget = args["budget-sec"];
   const request: LineupSolverRequest = {
     ...exported.request,
-    timeBudgetSec: Number(args["budget-sec"] ?? exported.request.timeBudgetSec),
+    timeBudgetSec:
+      budget == null
+        ? exported.request.timeBudgetSec
+        : Number(budget) > 0
+          ? Number(budget)
+          : null,
   };
   const start = performance.now();
   let result: LineupSolverResult | null = null;
@@ -310,7 +328,7 @@ async function main(): Promise<void> {
   );
   const replayed = await plan(request, finished, calibrated);
   printRun(
-    `Replay (${seconds} s, ${request.timeBudgetSec} s per team)`,
+    `Replay (${seconds} s, ${request.timeBudgetSec == null ? "until done" : `${request.timeBudgetSec} s per team`})`,
     request,
     finished,
     calibrated,

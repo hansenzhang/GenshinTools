@@ -41,6 +41,7 @@ function result(count: number, partial = false): LineupSolverResult {
     })),
     issues: [],
     weaponCopies: {},
+    setSlotCounts: {},
     trace: { tasks: [], runs: [], memberStats: {} },
     partial,
   };

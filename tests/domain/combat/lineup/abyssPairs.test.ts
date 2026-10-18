@@ -51,6 +51,7 @@ function candidate(
       refinement: 1,
       artifactSet: null,
       artifacts: piecesOf(`${charId}-${id}`),
+      anyPieces: false,
     })),
     damage: margin,
     ratio: margin,

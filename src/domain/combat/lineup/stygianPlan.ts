@@ -23,6 +23,7 @@ import type {
 } from "@/domain/team/lineupSolverTypes";
 import {
   candidateArtifactIds,
+  candidateSetSlotUses,
   candidateWeaponUses,
   findBindingItems,
   tiedMarginFloor,
@@ -65,13 +66,16 @@ function addTerms(target: MilpTerms, terms: MilpTerms, scale = 1): MilpTerms {
 
 /**
  * Exactly one candidate per encounter, no character or piece twice, and no
- * weapon used by more members than owned copies. Null when an encounter has
- * no candidate.
+ * weapon used by more members than owned copies. With `setSlotCounts`, the
+ * pieces taken per set and slot, exact ones and those members that take any
+ * pieces of a set need, stay within what is owned. Null when an encounter
+ * has no candidate.
  */
 function buildRunModel(
   encounterIds: readonly string[],
   candidates: readonly CalibratedCandidate[],
-  weaponCopies: Readonly<Record<string, number>>
+  weaponCopies: Readonly<Record<string, number>>,
+  setSlotCounts: Readonly<Record<string, number>> | undefined
 ): RunModel | null {
   const included = candidates.filter((candidate) =>
     encounterIds.includes(candidate.encounterId)
@@ -109,6 +113,11 @@ function buildRunModel(
       candidateWeaponUses(candidate)
     ))
       use(`weapon:${weaponId}`, weaponCopies[weaponId] ?? 0, index, count);
+    if (setSlotCounts)
+      for (const [key, count] of Object.entries(
+        candidateSetSlotUses(candidate)
+      ))
+        use(`set:${key}`, setSlotCounts[key] ?? 0, index, count);
   });
   let row = 0;
   for (const { capacity, terms } of users.values()) {
@@ -285,7 +294,8 @@ export function planStygianRun(
   const run = buildRunModel(
     encounterIds,
     request.candidates,
-    request.weaponCopies
+    request.weaponCopies,
+    request.setSlotCounts
   );
   if (!run || encounterIds.length === 0) return empty;
   const best = leximin(run, request.tiePercent, solve);
@@ -302,7 +312,12 @@ export function planStygianRun(
     request.weaponCopies,
     best.maxMin,
     (left, copies) => {
-      const without = buildRunModel(encounterIds, left, copies);
+      const without = buildRunModel(
+        encounterIds,
+        left,
+        copies,
+        request.setSlotCounts
+      );
       return without && maxMin(without, solve);
     }
   );

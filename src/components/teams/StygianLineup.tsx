@@ -1,5 +1,6 @@
 import { useMemo, useState } from "react";
 import { useLanguage } from "@/contexts/LanguageContext";
+import { fillAnyPieces } from "@/domain/combat/lineup/candidates";
 import {
   LINEUP_DEFAULT_TIME_BUDGET_SEC,
   LINEUP_MARGIN_TIE_PERCENT,
@@ -17,6 +18,7 @@ import {
 import {
   BindingList,
   CandidateDetail,
+  KeepersToggle,
   LineupRow,
   LineupRunControls,
   MarginValue,
@@ -27,14 +29,16 @@ import {
 } from "./LineupResults";
 
 /** Stygian lineup settings for this session. */
-let sessionTimeBudgetSec = LINEUP_DEFAULT_TIME_BUDGET_SEC;
+let sessionTimeBudgetSec: number | null = LINEUP_DEFAULT_TIME_BUDGET_SEC;
+let sessionKeepersOnly = true;
 
 export function StygianLineup() {
   const { t } = useLanguage();
   const names = useTemplateNames();
   const encounterLabel = useEncounterLabel();
   const [timeBudgetSec, setTimeBudgetSec] = useState(sessionTimeBudgetSec);
-  const job = useLineupJob("stygian", timeBudgetSec);
+  const [keepersOnly, setKeepersOnly] = useState(sessionKeepersOnly);
+  const job = useLineupJob("stygian", timeBudgetSec, keepersOnly);
   const { encounters, calibrated } = job;
   const { result } = job.solver;
   const planRequest = useMemo<StygianPlanRequest | null>(
@@ -44,6 +48,7 @@ export function StygianLineup() {
             encounterIds: encounters.map((encounter) => encounter.id),
             candidates: calibrated,
             weaponCopies: result.weaponCopies,
+            setSlotCounts: result.setSlotCounts,
             tiePercent: LINEUP_MARGIN_TIE_PERCENT,
           }
         : null,
@@ -58,6 +63,14 @@ export function StygianLineup() {
   const plan = plans.find((entry) => entry.kind === selectedKind) ?? plans[0];
   const candidate = (id: string | undefined) =>
     calibrated.find((entry) => entry.id === id) ?? null;
+  // The plan's teams with free pieces for members that take any pieces.
+  const shown = fillAnyPieces(
+    encounters.flatMap((encounter) => {
+      const chosen = candidate(plan?.candidateIds[encounter.id]);
+      return chosen ? [chosen] : [];
+    }),
+    job.artifacts
+  );
   const bestAlone = (encounterId: string) => {
     const margins = calibrated.flatMap((entry) =>
       entry.encounterId === encounterId ? [entry.margin] : []
@@ -90,14 +103,24 @@ export function StygianLineup() {
           needClearHint={t.ui("lineup.needStygianClear")}
           debugPlan={{ mode: "stygian", result: planState.result ?? null }}
           settings={
-            <TimeBudgetSelect
-              value={timeBudgetSec}
-              disabled={job.solver.isComputing}
-              onChange={(seconds) => {
-                sessionTimeBudgetSec = seconds;
-                setTimeBudgetSec(seconds);
-              }}
-            />
+            <>
+              <TimeBudgetSelect
+                value={timeBudgetSec}
+                disabled={job.solver.isComputing}
+                onChange={(seconds) => {
+                  sessionTimeBudgetSec = seconds;
+                  setTimeBudgetSec(seconds);
+                }}
+              />
+              <KeepersToggle
+                checked={keepersOnly}
+                disabled={job.solver.isComputing}
+                onChange={(checked) => {
+                  sessionKeepersOnly = checked;
+                  setKeepersOnly(checked);
+                }}
+              />
+            </>
           }
         />
         {planState.error && (
@@ -142,7 +165,11 @@ export function StygianLineup() {
                   <CandidateDetail
                     key={encounter.id}
                     label={encounterLabel(encounter)}
-                    candidate={candidate(plan?.candidateIds[encounter.id])}
+                    candidate={
+                      shown.find(
+                        (entry) => entry.id === plan?.candidateIds[encounter.id]
+                      ) ?? null
+                    }
                     bestAlone={bestAlone(encounter.id)}
                     issues={issuesFor(encounter.id)}
                     names={names}

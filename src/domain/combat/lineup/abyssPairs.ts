@@ -69,11 +69,16 @@ type Halves = [CalibratedCandidate | null, CalibratedCandidate | null];
 const fielded = (halves: Halves) =>
   halves.filter((candidate) => candidate !== null);
 
+/** Owned pieces per set and slot, when members may take any pieces of a
+ *  set; without them, such members are not bounded. */
+type SetSlotCounts = Readonly<Record<string, number>> | undefined;
+
 /** Every pairing that can be fielded; a missing half is left empty. */
 function feasiblePairings(
   first: readonly CalibratedCandidate[],
   second: readonly CalibratedCandidate[],
-  weaponCopies: Readonly<Record<string, number>>
+  weaponCopies: Readonly<Record<string, number>>,
+  setSlotCounts: SetSlotCounts
 ): Halves[] {
   const all: Halves[] =
     second.length === 0
@@ -82,7 +87,7 @@ function feasiblePairings(
         ? second.map((b) => [null, b])
         : first.flatMap((a) => second.map((b): Halves => [a, b]));
   return all.filter((halves) =>
-    canFieldTogether(fielded(halves), weaponCopies)
+    canFieldTogether(fielded(halves), weaponCopies, setSlotCounts)
   );
 }
 
@@ -92,11 +97,15 @@ export function bestPairingMargin(
   first: readonly CalibratedCandidate[],
   second: readonly CalibratedCandidate[],
   weaponCopies: Readonly<Record<string, number>>,
-  rule: AbyssTimerRule
+  rule: AbyssTimerRule,
+  setSlotCounts?: SetSlotCounts
 ): number | null {
-  const margins = feasiblePairings(first, second, weaponCopies).map(
-    (halves) => pairingKey(fielded(halves), rule)[0]
-  );
+  const margins = feasiblePairings(
+    first,
+    second,
+    weaponCopies,
+    setSlotCounts
+  ).map((halves) => pairingKey(fielded(halves), rule)[0]);
   return margins.length > 0 ? Math.max(...margins) : null;
 }
 
@@ -112,27 +121,31 @@ export function rankAbyssPairings(
   weaponCopies: Readonly<Record<string, number>>,
   rule: AbyssTimerRule,
   tiePercent: number,
-  limit: number
+  limit: number,
+  setSlotCounts?: SetSlotCounts
 ): AbyssPairing[] {
   type Option = {
     pairing: AbyssPairing;
     halves: Halves;
     key: [number, number];
   };
-  let options: Option[] = feasiblePairings(first, second, weaponCopies).map(
-    ([a, b]) => {
-      const key = pairingKey(fielded([a, b]), rule);
-      return {
-        pairing: {
-          firstId: a?.id ?? null,
-          secondId: b?.id ?? null,
-          margin: key[0],
-        },
-        halves: [a, b],
-        key,
-      };
-    }
-  );
+  let options: Option[] = feasiblePairings(
+    first,
+    second,
+    weaponCopies,
+    setSlotCounts
+  ).map(([a, b]) => {
+    const key = pairingKey(fielded([a, b]), rule);
+    return {
+      pairing: {
+        firstId: a?.id ?? null,
+        secondId: b?.id ?? null,
+        margin: key[0],
+      },
+      halves: [a, b],
+      key,
+    };
+  });
 
   const ranked: AbyssPairing[] = [];
   while (options.length > 0 && ranked.length < limit) {
@@ -170,7 +183,8 @@ export function planAbyssChambers(
   weaponCopies: Readonly<Record<string, number>>,
   rule: AbyssTimerRule,
   tiePercent: number,
-  limit: number
+  limit: number,
+  setSlotCounts?: SetSlotCounts
 ): AbyssChamberPlan[] {
   const chambers = [
     ...new Set(
@@ -203,7 +217,8 @@ export function planAbyssChambers(
       weaponCopies,
       rule,
       tiePercent,
-      limit
+      limit,
+      setSlotCounts
     );
     const best = pairings[0];
     const lineup = best
@@ -223,7 +238,13 @@ export function planAbyssChambers(
             lineup,
             [...first, ...second],
             weaponCopies,
-            bestPairingMargin(first, second, weaponCopies, rule) ?? best.margin,
+            bestPairingMargin(
+              first,
+              second,
+              weaponCopies,
+              rule,
+              setSlotCounts
+            ) ?? best.margin,
             (left, copies) => {
               const isFirst = (c: CalibratedCandidate) =>
                 c.encounterId === firstEncounter?.id;
@@ -231,7 +252,8 @@ export function planAbyssChambers(
                 left.filter(isFirst),
                 left.filter((c) => !isFirst(c)),
                 copies,
-                rule
+                rule,
+                setSlotCounts
               );
             }
           )

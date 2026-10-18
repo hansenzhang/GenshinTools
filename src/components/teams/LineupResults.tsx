@@ -1,10 +1,11 @@
 import { FileDown, Loader2, Play } from "lucide-react";
-import { type ReactNode, useMemo } from "react";
+import { type ReactNode, useEffect, useId, useMemo, useState } from "react";
 import { ArtifactDataHoverCard } from "@/components/shared/ArtifactDataHoverCard";
 import { CharAvatar } from "@/components/shared/CharAvatar";
 import { VALUE_COLORS } from "@/components/shared/colors";
 import { ItemIcon } from "@/components/shared/ItemIcon";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Progress } from "@/components/ui/progress";
 import {
   Select,
@@ -14,6 +15,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { useLanguage } from "@/contexts/LanguageContext";
+import { getAllArtifacts } from "@/domain/build/artifact/inventory";
 import { calibrateCandidates } from "@/domain/combat/lineup/candidates";
 import {
   LINEUP_MARGIN_TIE_PERCENT,
@@ -21,6 +23,7 @@ import {
 } from "@/domain/combat/lineup/constants";
 import { buildLineupDebugExport } from "@/domain/combat/lineup/debugExport";
 import { allSlots } from "@/domain/enums";
+import { runTriage } from "@/domain/game-account/triage/triageEngine";
 import type { ArtifactData } from "@/domain/models";
 import { calibratedMargin } from "@/domain/team/lineup";
 import type {
@@ -40,8 +43,17 @@ import {
 } from "@/hooks/useLineupSolver";
 import { cn } from "@/lib/utils";
 import { useBuffOverrideStore } from "@/stores/useBuffOverrideStore";
+import {
+  selectEnabledBuildGroups,
+  selectResolvedBuildGroups,
+  useBuildsStore,
+} from "@/stores/useBuildsStore";
 import { useLineupStore } from "@/stores/useLineupStore";
 import { useTeamStore } from "@/stores/useTeamStore";
+import {
+  selectActiveTriageSettings,
+  useTriageStore,
+} from "@/stores/useTriageStore";
 import { getArtifactSetLabel } from "./WeaponChoiceResultCard";
 
 type Translate = ReturnType<typeof useLanguage>["t"];
@@ -119,7 +131,11 @@ export function useTemplateNames(): TeamNames {
  * Clear times, downtime and bars are left out of the inputs, since they only
  * change margins.
  */
-export function useLineupJob(mode: EncounterMode, timeBudgetSec: number) {
+export function useLineupJob(
+  mode: EncounterMode,
+  timeBudgetSec: number | null,
+  keepersOnly: boolean
+) {
   const allEncounters = useLineupStore((s) => s.encounters);
   const templates = useLineupStore((s) => s.templates);
   const allCalibrations = useLineupStore((s) => s.calibrations);
@@ -128,6 +144,29 @@ export function useLineupJob(mode: EncounterMode, timeBudgetSec: number) {
   const getSetupConfig = useTeamStore((s) => s.getTeamSetupConfigById);
   const comboOverrides = useBuffOverrideStore((s) => s.comboOverrides);
   const accountData = useActiveAccountData();
+  const buildGroups = useBuildsStore(selectEnabledBuildGroups);
+  const allBuildGroups = useBuildsStore(selectResolvedBuildGroups);
+  const triageSettings = useTriageStore(selectActiveTriageSettings);
+  // Locked pieces and the ones Triage recommends locking.
+  const keeperArtifactIds = useMemo(() => {
+    if (!keepersOnly || !accountData) return undefined;
+    const { decisions } = runTriage(
+      accountData,
+      buildGroups,
+      triageSettings,
+      allBuildGroups
+    );
+    return [
+      ...new Set([
+        ...getAllArtifacts(accountData).flatMap((artifact) =>
+          artifact.lock ? [artifact.id] : []
+        ),
+        ...decisions.flatMap((decision) =>
+          decision.label === "lock" ? [decision.artifact.id] : []
+        ),
+      ]),
+    ].sort();
+  }, [keepersOnly, accountData, buildGroups, triageSettings, allBuildGroups]);
 
   const encounters = useMemo(
     () => allEncounters.filter((encounter) => encounter.mode === mode),
@@ -176,8 +215,17 @@ export function useLineupJob(mode: EncounterMode, timeBudgetSec: number) {
         teams,
         comboOverrides,
         timeBudgetSec,
+        keeperArtifactIds,
       }),
-    [accountKey, encounters, calibrations, teams, comboOverrides, timeBudgetSec]
+    [
+      accountKey,
+      encounters,
+      calibrations,
+      teams,
+      comboOverrides,
+      timeBudgetSec,
+      keeperArtifactIds,
+    ]
   );
   const solver = useLineupSolver(mode, signature);
   const { result } = solver;
@@ -199,6 +247,7 @@ export function useLineupJob(mode: EncounterMode, timeBudgetSec: number) {
             calibrations,
             comboOverrides,
             timeBudgetSec,
+            keeperArtifactIds,
           }
         : null,
     [
@@ -209,7 +258,12 @@ export function useLineupJob(mode: EncounterMode, timeBudgetSec: number) {
       calibrations,
       comboOverrides,
       timeBudgetSec,
+      keeperArtifactIds,
     ]
+  );
+  const artifacts = useMemo(
+    () => (accountData ? getAllArtifacts(accountData) : []),
+    [accountData]
   );
   const run = () => {
     if (request) solver.start(request);
@@ -238,6 +292,8 @@ export function useLineupJob(mode: EncounterMode, timeBudgetSec: number) {
     calibrations,
     solver,
     calibrated,
+    /** The account's pieces, for filling members that take any pieces. */
+    artifacts,
     hasAccount: accountData != null,
     canRun: request != null && teams.length > 0,
     run,
@@ -294,23 +350,59 @@ function progressShare(progress: LineupSolverProgress | null): number {
   return (progress.task + stage) / (progress.tasks + 1);
 }
 
+/** Limits members whose pieces matter to pieces worth keeping. */
+export function KeepersToggle({
+  checked,
+  disabled,
+  onChange,
+}: {
+  checked: boolean;
+  disabled: boolean;
+  onChange: (checked: boolean) => void;
+}) {
+  const { t } = useLanguage();
+  const id = useId();
+  return (
+    <label
+      htmlFor={id}
+      className="flex items-center gap-2 text-xs md:text-sm"
+      title={t.ui("lineup.keepersOnlyTip")}
+    >
+      <Checkbox
+        id={id}
+        className="border-foreground/30"
+        checked={checked}
+        disabled={disabled}
+        onCheckedChange={(next) => onChange(next === true)}
+      />
+      {t.ui("lineup.keepersOnly")}
+    </label>
+  );
+}
+
+/** Select value for running every finalist until its search finishes. */
+const UNTIL_DONE = "until-done";
+
 export function TimeBudgetSelect({
   value,
   disabled,
   onChange,
 }: {
-  value: number;
+  /** Seconds per team; null runs until done. */
+  value: number | null;
   disabled: boolean;
-  onChange: (seconds: number) => void;
+  onChange: (seconds: number | null) => void;
 }) {
   const { t } = useLanguage();
   return (
     <div className="flex items-center gap-1">
       <span className={LINEUP_LABEL_CLS}>{t.ui("lineup.timePerTeam")}</span>
       <Select
-        value={String(value)}
+        value={value == null ? UNTIL_DONE : String(value)}
         disabled={disabled}
-        onValueChange={(next) => onChange(Number(next))}
+        onValueChange={(next) =>
+          onChange(next === UNTIL_DONE ? null : Number(next))
+        }
       >
         <SelectTrigger
           className={LINEUP_SELECT_CLS}
@@ -321,13 +413,32 @@ export function TimeBudgetSelect({
         <SelectContent>
           {LINEUP_TIME_BUDGET_OPTIONS_SEC.map((seconds) => (
             <SelectItem key={seconds} value={String(seconds)}>
-              {seconds}s
+              {seconds < 60
+                ? `${seconds}s`
+                : t.format("lineup.minutes", seconds / 60)}
             </SelectItem>
           ))}
+          <SelectItem value={UNTIL_DONE} title={t.ui("lineup.untilDoneTip")}>
+            {t.ui("lineup.untilDone")}
+          </SelectItem>
         </SelectContent>
       </Select>
     </div>
   );
+}
+
+/** Minutes and seconds since `startedAt`, ticking while a run computes. */
+function useElapsed(startedAt: number | null, running: boolean): string {
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    if (!running) return;
+    const timer = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(timer);
+  }, [running]);
+  const seconds = startedAt
+    ? Math.max(0, Math.floor((now - startedAt) / 1000))
+    : 0;
+  return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, "0")}`;
 }
 
 /** Settings row, Run/Stop, a hint when it cannot run, progress and errors.
@@ -346,6 +457,7 @@ export function LineupRunControls({
   const { t } = useLanguage();
   const { solver } = job;
   const { progress } = solver;
+  const elapsed = useElapsed(solver.startedAt, solver.isComputing);
   const stageLabels: Record<LineupSolverProgress["stage"], string> = {
     screen: t.ui("teamComp.teamSetsStageScreen"),
     optimize: t.ui("teamComp.teamSetsStageOptimize"),
@@ -406,6 +518,7 @@ export function LineupRunControls({
                 ? `${stageLabels.diversify} ${progress.done}/${progress.total}`
                 : `${t.format("lineup.progressTeam", progress.task + 1, progress.tasks)} · ${stageLabels[progress.stage]} ${progress.done}/${progress.total}`
               : t.ui("teamComp.weaponChoiceRunning")}
+            {` · ${elapsed}`}
           </p>
         </div>
       )}
@@ -464,6 +577,14 @@ function CandidateMembers({ candidate }: { candidate: CalibratedCandidate }) {
               ? getArtifactSetLabel(member.artifactSet, t)
               : t.ui("common.none")}
           </span>
+          {member.anyPieces && (
+            <span
+              className="ml-1 shrink-0 text-xs font-semibold"
+              title={t.ui("lineup.anyPiecesTip")}
+            >
+              {t.ui("lineup.anyPieces")}
+            </span>
+          )}
         </div>
       ))}
     </div>
@@ -526,6 +647,9 @@ export function CandidateDetail({
             )}
             {costsMargin && (
               <span>{t.format("lineup.bestAlone", bestAlone.toFixed(2))}</span>
+            )}
+            {candidate.origin === "recorded" && (
+              <span>{t.ui("lineup.originRecorded")}</span>
             )}
             {candidate.origin === "pieces-excluded" && (
               <span>{t.ui("lineup.originPieces")}</span>

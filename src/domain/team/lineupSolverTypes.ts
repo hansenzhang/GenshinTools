@@ -24,14 +24,21 @@ export interface LineupMember {
   /** Sets the pieces form. */
   artifactSet: ArtifactSetConfig | null;
   artifacts: Record<Slot, ArtifactData | null>;
+  /** Only the set matters: the member's stats don't move damage, so any
+   *  pieces that form its set serve, and its own pieces aren't contested. */
+  anyPieces: boolean;
 }
 
 /**
- * How a candidate was found: the set search, a re-run without pieces a team
- * on the other half uses, or the same pieces with a weapon that team needs
- * replaced.
+ * How a candidate was found: the recorded build itself, the set search, a
+ * re-run without pieces a team on the other half uses, or the same pieces
+ * with a weapon that team needs replaced.
  */
-export type CandidateOrigin = "search" | "pieces-excluded" | "weapon-swapped";
+export type CandidateOrigin =
+  | "recorded"
+  | "search"
+  | "pieces-excluded"
+  | "weapon-swapped";
 
 /**
  * One way to field a template against an encounter from the account.
@@ -130,6 +137,9 @@ export interface StygianPlanRequest {
   encounterIds: string[];
   candidates: CalibratedCandidate[];
   weaponCopies: Record<string, number>;
+  /** Owned pieces per set and slot; without them, members that take any
+   *  pieces of a set are not bounded. */
+  setSlotCounts?: Record<string, number>;
   tiePercent: number;
 }
 
@@ -163,8 +173,13 @@ export interface LineupSolverRequest {
   calibrations: Calibration[];
   /** User buff activations by combo, as the buff override store keys them. */
   comboOverrides: Record<string, BuffActivationMap>;
-  /** Real-inventory time per template and encounter. */
-  timeBudgetSec: number;
+  /** Real-inventory time per template and encounter; null runs every
+   *  finalist until its search finishes. */
+  timeBudgetSec: number | null;
+  /** Pieces members whose pieces matter may use (locked, recommended to
+   *  lock, or in a recorded build); absent uses every piece. Members whose
+   *  pieces don't matter may always use any piece. */
+  keeperArtifactIds?: string[];
 }
 
 /** Why a template's calibrated encounter produced no candidates. */
@@ -183,9 +198,10 @@ export interface LineupIssue {
 
 // ─── Solver trace ───
 
-/** Why the job optimized an assignment on the account: a search finalist,
- *  or a re-run without pieces another encounter's candidate uses. */
-export type LineupRunKind = "search" | "pieces-excluded";
+/** Why the job optimized an assignment on the account: the recorded build's
+ *  sets, a search finalist, or a re-run without pieces another encounter's
+ *  candidate uses. */
+export type LineupRunKind = "recorded-sets" | "search" | "pieces-excluded";
 
 /** One real-inventory optimization, as the debug export reports it. */
 export interface LineupRunTrace {
@@ -196,9 +212,12 @@ export interface LineupRunTrace {
   assignment: SetAssignment;
   /** Team damage on generated artifacts fitted to the assignment. */
   generatedDamage: number | null;
+  /** Team damage on the account's best pieces for the assignment. */
+  accountEstimate: number | null;
   /** Pieces kept out of every member's pool. */
   excludedArtifactCount: number;
-  runMs: number;
+  /** Time the run was given; null when it ran until done. */
+  runMs: number | null;
   elapsedMs: number;
   /** Damage of the pieces found, with the sets they form; null if unreachable. */
   damage: number | null;
@@ -220,13 +239,23 @@ export interface LineupTaskTrace {
   referenceDamage: number | null;
   /** Sets the recorded build's pieces form. */
   referenceSets: SetAssignment;
-  /** Compositions on generated artifacts at their current sets, best first. */
-  compositions: { charIds: string[]; damage: number }[];
-  /** Screened compositions with their best assignments on generated
-   *  artifacts, in the order runs are taken. */
+  /** Compositions at their current sets, strongest on the account first. */
+  compositions: {
+    charIds: string[];
+    generatedDamage: number;
+    accountEstimate: number | null;
+  }[];
+  /** Time spent ranking compositions and screening their sets. */
+  screenMs: number;
+  /** Screened compositions with their finalists, in the order runs are
+   *  taken. */
   screens: {
     charIds: string[];
-    outcomes: { assignment: SetAssignment; generatedDamage: number }[];
+    outcomes: {
+      assignment: SetAssignment;
+      generatedDamage: number | null;
+      accountEstimate: number | null;
+    }[];
   }[];
 }
 
@@ -245,6 +274,9 @@ export interface LineupSolverResult {
   issues: LineupIssue[];
   /** Owned copies per weapon, which bound how many members can use one. */
   weaponCopies: Record<string, number>;
+  /** Owned pieces per set and slot (`setSlotKey`), which bound members
+   *  that take any pieces of a set. */
+  setSlotCounts: Record<string, number>;
   /** How the candidates were found, for the debug export. */
   trace: LineupSolverTrace;
   partial: boolean;

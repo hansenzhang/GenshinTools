@@ -53,6 +53,7 @@ function candidate(
       refinement: 3,
       artifactSet: null,
       artifacts: NO_PIECES,
+      anyPieces: false,
     })),
     damage: ratio * 1000,
     ratio,
@@ -66,6 +67,7 @@ function solverState(result: LineupSolverResult | null): LineupSolverState {
     progress: null,
     error: null,
     isComputing: false,
+    startedAt: null,
     start: vi.fn(),
     stop: vi.fn(),
   };
@@ -152,6 +154,7 @@ describe("AbyssLineups", () => {
         yelan_weapon: 1,
         diluc_weapon: 1,
       },
+      setSlotCounts: {},
       trace: { tasks: [], runs: [], memberStats: {} },
       partial: false,
     });
@@ -188,6 +191,7 @@ describe("AbyssLineups", () => {
       candidates: [candidate("c1", "ta", "e1", ["hu_tao", "xingqiu"], 1.2)],
       issues: [{ templateId: "tb", encounterId: "e2", reason: "no-candidate" }],
       weaponCopies: { favonius_sword: 1 },
+      setSlotCounts: {},
       trace: { tasks: [], runs: [], memberStats: {} },
       partial: false,
     });

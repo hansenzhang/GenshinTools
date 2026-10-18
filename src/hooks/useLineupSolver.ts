@@ -19,6 +19,8 @@ interface LineupSolverJob {
   progress: LineupSolverProgress | null;
   error: LineupSolverFailure | null;
   isComputing: boolean;
+  /** When the current or last run started (epoch ms). */
+  startedAt: number | null;
 }
 
 export interface LineupSolverState extends Omit<LineupSolverJob, "signature"> {
@@ -32,6 +34,7 @@ const IDLE: LineupSolverJob = {
   progress: null,
   error: null,
   isComputing: false,
+  startedAt: null,
 };
 
 // One job per mode for the session: it keeps running while the Lineups view
@@ -73,6 +76,7 @@ function startJob(signature: string, request: LineupSolverRequest) {
     progress: null,
     error: null,
     isComputing: true,
+    startedAt: Date.now(),
   });
   let taskWorker: Worker;
   try {
@@ -136,6 +140,7 @@ export function useLineupSolver(
     progress: matches ? current.progress : null,
     error: matches ? current.error : null,
     isComputing: matches && current.isComputing,
+    startedAt: matches ? current.startedAt : null,
     start,
     stop,
   };
