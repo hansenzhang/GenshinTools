@@ -1,7 +1,8 @@
 # Lineup solver
 
 Status: decisions and design, 2026-10-16. P1 is implemented as Build comparison › Team sets,
-and P0 as Team Comp › Lineups (2026-10-18). P2–P6 are not.
+P0 as Team Comp › Lineups (2026-10-18), and P2 as Lineups › Abyss lineups (2026-10-19).
+P3–P6 are not.
 Source: the feasibility study in `~/mistilteinn/reference/notes/team-solver-study.md`, which
 compares this repo with Genshin Optimizer (GO) and gcsim, and the decisions made with the user
 after it.
@@ -150,7 +151,8 @@ Validate with `npm run check` and `npm run depcheck`.
 ## Open
 
 - **Runtime budget.** Each `runTeamOptimization` call takes seconds, and dozens run per template.
-  That's minutes in a background job. Measure in P2 before tuning screening widths.
+  That's minutes in a background job. Measured in P2 (see "P2 measurements"); screening widths
+  are not tuned yet.
 - **Calibration burden.** Assignments the user doesn't play need extra clears, or the model has
   to be trusted across bosses.
 
@@ -204,3 +206,86 @@ usually somewhat slower per evaluation, but it runs one optimizer worker per mem
 - In the browser (dev build, one optimizer worker per member), a full Team sets run with owned
   artifacts and the default 60 s budget took 67–73 s end to end. Three runs of the same team gave
   identical percentages.
+
+## P2 as built (2026-10-19)
+
+- **Job** (`services/combat/lineup/lineupSolver.ts`, run by `lineupSolver.worker.ts`): one task
+  per Abyss half that a template has a recorded clear for. That clear is the user's
+  team-to-half choice. Each task:
+  1. Scores the recorded build under the half's enemy (`encounterCalcContext`). It uses the
+     sets its pieces form and the team's current rotation, limited to the recorded members.
+  2. Fields the template's compositions with `fieldComposition`:
+     - a team character keeps its slot's weapon and set goal;
+     - an alternative brings its equipped weapon and the sets its pieces form;
+     - a member whose weapon has no copy left takes its equipped weapon;
+     - compositions with unowned characters are skipped.
+
+     `compositionObjective` keeps the lines of members who stay and adds the default lines of
+     members who join (`joiningMemberLines`, shared with character replacement). A
+     single-formula objective is dropped when its character leaves.
+  3. Ranks up to 64 compositions with generated artifacts at their current sets. The P1 screen
+     then runs for up to 4: the best, the best without each member that some composition
+     leaves out, then the next best.
+  4. Optimizes finalists on the real inventory round-robin across compositions (each one's
+     best, then its next), up to 6 runs within Time per team (default 30 s). The P1 job was
+     split for this into `prepareTeamSetsJob` and `optimizeAssignmentOnAccount`.
+  5. Records each reachable result as a candidate: members with weapon, refinement, pieces
+     and realized sets, plus damage and `r = damage ÷ recorded build's damage`. Rotation
+     seconds are per template, so `r` is the damage ratio.
+- **Margins are left to the caller.** `calibrateCandidates` applies the current clear and bar
+  to `r`, so editing `T_meas`, `D` or the bar keeps a finished run. Those fields are not part
+  of the run's inputs.
+- **Weapon copies are counted per weapon**, not tracked per physical copy. Candidates can be
+  fielded together when no weapon has more users than owned copies. Refinement differences
+  between copies of one weapon are not modelled: each team assumes its best copy. The same
+  count is the MILP constraint for P3: `Σ uses_c · x_c ≤ copies`.
+- **Weapons are not searched.** They change only to resolve copy shortages, as above.
+- **Diversify.** Per chamber, the best candidate per template and composition on one half is
+  paired with each such candidate on the other. A pair that shares pieces or weapon copies,
+  but no character, is fixed in both directions, up to 4 fixes per chamber:
+  1. The composition's sets are screened again with the other candidate's pieces excluded for
+     every member, since the remaining pieces may not form the original sets. The best
+     assignment is then optimized.
+  2. A weapon the other candidate needs and the account lacks copies of is replaced by the
+     best free owned weapon of its type, re-scoring the same pieces.
+- **Pairing** (`domain/combat/lineup/abyssPairs.ts`) tries every first × second candidate that
+  shares no character or piece and overuses no weapon.
+  - Per half: the weaker margin ranks first. Margins within 3% are tied, and then the
+    stronger half decides.
+  - Shared timer: the halves' bars add up to the chamber's, and the chamber margin is
+    `(Σ bar − Σ D) ÷ Σ predicted active time`. Ties go to the weaker half.
+  - A pairing that matches a better one on both halves (same template and members, margins
+    tied) is dropped.
+  - A chamber with one calibrated half lists that half's candidates.
+- **UI**: Lineups › Abyss lineups has Time per team, Timer and Find lineups. Each chamber
+  shows its best pairing. Per half it shows the margin, the change against the recorded build,
+  the margin that half would reach alone, whether the team left the other half's artifacts or
+  took a free weapon copy, and each member's weapon, pieces and sets. Other pairings can be
+  selected, and tied margins are marked with ≈. Results last for the session. The job keeps
+  running while the tab is closed and stops when its inputs change.
+- **Left for later**: Stygian (P3), binding items and the drop when one is removed (Explain),
+  and saved results.
+
+## P2 measurements (2026-10-19)
+
+Measured with `tests/benchmark/lineupCost.ts` on the own account (2,530 artifacts), in Node on a
+single thread (inline optimizer path), with Time per team 30 s. Lunar (Columbina · Ineffa ·
+Linnea or Aino · Sucrose) takes 12-1 first half and Sandrone (Sandrone · Yae · Odette ·
+Alyosha or Bennett) the second, both recorded at their equipped builds.
+
+| Step | Lunar | Sandrone |
+|---|---|---|
+| Composition ranking and set screens (2 compositions) | 9.1 s | 11.3 s |
+| Real-inventory runs | 41 s | 30 s |
+
+- Diversify ran 4 fixes, each a set screen plus one run, in 47–49 s. The chamber took
+  139–140 s in total, and two runs gave identical candidates.
+- Alone, the best builds reach ×1.354 and ×1.262, but they share one piece. The fixes give two
+  conflict-free pairings: Lunar keeps the piece at ×1.354 with Sandrone at ×1.182, or gives it
+  up at ×1.195 with Sandrone at ×1.262. Their weaker halves are within 3%, so the first is
+  listed first.
+- A full Abyss of 3 chambers × 2 teams extrapolates to about 7 minutes in Node. The browser
+  runs one optimizer worker per member. A two-member test account took about 13 s there end
+  to end.
+- Real-inventory runs overshoot their per-run time on the inline path, as in P1. Runs and the
+  re-run set screens dominate; the composition screen does not.
