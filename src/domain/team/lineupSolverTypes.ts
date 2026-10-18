@@ -11,7 +11,8 @@ import type {
   EncounterMode,
   TeamTemplate,
 } from "./lineupTypes";
-import type { TeamComp, TeamSetupConfig } from "./types";
+import type { SetAssignment } from "./setConfigExplorerTypes";
+import type { OptFailReason, TeamComp, TeamSetupConfig } from "./types";
 
 // ─── Candidates ───
 
@@ -180,12 +181,93 @@ export interface LineupIssue {
   reason: LineupIssueReason;
 }
 
+// ─── Solver trace ───
+
+/** Why the job optimized an assignment on the account: a search finalist,
+ *  or a re-run without pieces another encounter's candidate uses. */
+export type LineupRunKind = "search" | "pieces-excluded";
+
+/** One real-inventory optimization, as the debug export reports it. */
+export interface LineupRunTrace {
+  kind: LineupRunKind;
+  templateId: string;
+  encounterId: string;
+  charIds: string[];
+  assignment: SetAssignment;
+  /** Team damage on generated artifacts fitted to the assignment. */
+  generatedDamage: number | null;
+  /** Pieces kept out of every member's pool. */
+  excludedArtifactCount: number;
+  runMs: number;
+  elapsedMs: number;
+  /** Damage of the pieces found, with the sets they form; null if unreachable. */
+  damage: number | null;
+  realized: SetAssignment;
+  failReasons: Record<string, OptFailReason>;
+  unmetCharIds: string[];
+  /** Members the optimizer filled from leftover pieces. */
+  saturatedCharIds: string[];
+  /** Substat weights each member's pieces were ranked with. */
+  substatWeights: Record<string, Record<string, number>>;
+  /** The candidate it gave, or the listed one with the same gear. */
+  candidateId: string | null;
+}
+
+/** One template against one encounter, before its real-inventory runs. */
+export interface LineupTaskTrace {
+  templateId: string;
+  encounterId: string;
+  referenceDamage: number | null;
+  /** Sets the recorded build's pieces form. */
+  referenceSets: SetAssignment;
+  /** Compositions on generated artifacts at their current sets, best first. */
+  compositions: { charIds: string[]; damage: number }[];
+  /** Screened compositions with their best assignments on generated
+   *  artifacts, in the order runs are taken. */
+  screens: {
+    charIds: string[];
+    outcomes: { assignment: SetAssignment; generatedDamage: number }[];
+  }[];
+}
+
+/** Final stats of a member, universal values under the encounter. */
+export type LineupMemberStats = Record<string, number>;
+
+export interface LineupSolverTrace {
+  tasks: LineupTaskTrace[];
+  runs: LineupRunTrace[];
+  /** Stats per candidate id, then per member. */
+  memberStats: Record<string, Record<string, LineupMemberStats>>;
+}
+
 export interface LineupSolverResult {
   candidates: LineupCandidate[];
   issues: LineupIssue[];
   /** Owned copies per weapon, which bound how many members can use one. */
   weaponCopies: Record<string, number>;
+  /** How the candidates were found, for the debug export. */
+  trace: LineupSolverTrace;
   partial: boolean;
+}
+
+/** The plan a lineup run's results were shown with. */
+export type LineupDebugPlan =
+  | { mode: "abyss"; chambers: AbyssChamberPlan[] }
+  | { mode: "stygian"; result: StygianPlanResult | null };
+
+/**
+ * A lineup run saved for troubleshooting: its inputs, which replay on their
+ * own (the request carries the account), and what it found.
+ */
+export interface LineupDebugExport {
+  format: string;
+  version: number;
+  exportedAt: string;
+  request: LineupSolverRequest;
+  result: LineupSolverResult;
+  /** Candidates with margins from the clears at export time. */
+  calibrated: CalibratedCandidate[];
+  plan: LineupDebugPlan;
 }
 
 export type LineupSolverStage = "screen" | "optimize" | "diversify";

@@ -88,6 +88,7 @@ export function StygianLineup() {
         <LineupRunControls
           job={job}
           needClearHint={t.ui("lineup.needStygianClear")}
+          debugPlan={{ mode: "stygian", result: planState.result ?? null }}
           settings={
             <TimeBudgetSelect
               value={timeBudgetSec}

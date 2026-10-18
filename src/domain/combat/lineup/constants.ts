@@ -70,3 +70,7 @@ export const LINEUP_BINDING_CHECKS = 16;
 export const LINEUP_TIME_BUDGET_OPTIONS_SEC = [30, 60, 120] as const;
 
 export const LINEUP_DEFAULT_TIME_BUDGET_SEC = 30;
+
+/** Format tag and version of a lineup run's debug export. */
+export const LINEUP_DEBUG_FORMAT = "genshintools-lineup-debug";
+export const LINEUP_DEBUG_VERSION = 1;

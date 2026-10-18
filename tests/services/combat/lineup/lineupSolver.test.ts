@@ -309,6 +309,36 @@ describe("runLineupSolver", () => {
     expect(origins.has("pieces-excluded")).toBe(true);
     expect(origins.has("weapon-swapped")).toBe(true);
 
+    // The trace explains every candidate: its task, the run it came from
+    // and its members' final stats.
+    const { trace } = result;
+    expect(
+      trace.tasks.map((task) => `${task.templateId}:${task.encounterId}`)
+    ).toEqual(["template-a:first", "template-b:second"]);
+    for (const task of trace.tasks) {
+      expect(task.referenceDamage).toBeGreaterThan(0);
+      expect(task.compositions.length).toBeGreaterThan(0);
+      expect(task.screens[0].outcomes.length).toBeGreaterThan(0);
+    }
+    const runKinds = new Set(trace.runs.map((entry) => entry.kind));
+    expect(runKinds).toEqual(new Set(["search", "pieces-excluded"]));
+    const ids = new Set(result.candidates.map((entry) => entry.id));
+    for (const entry of trace.runs) {
+      expect(entry.elapsedMs).toBeGreaterThan(0);
+      if (entry.candidateId) expect(ids.has(entry.candidateId)).toBe(true);
+    }
+    for (const candidate of result.candidates) {
+      const stats = trace.memberStats[candidate.id];
+      expect(Object.keys(stats).sort()).toEqual(
+        candidate.members.map((member) => member.charId).sort()
+      );
+      for (const sheet of Object.values(stats)) {
+        expect(sheet.cr).toBeGreaterThan(0);
+        expect(sheet.cd).toBeGreaterThan(0);
+        expect(sheet.atk).toBeGreaterThan(0);
+      }
+    }
+
     const [plan] = planAbyssChambers(
       input.encounters,
       calibrated,

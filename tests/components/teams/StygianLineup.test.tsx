@@ -12,6 +12,7 @@ import type {
 import type { StygianEncounter } from "@/domain/team/lineupTypes";
 import type { LineupSolverState } from "@/hooks/useLineupSolver";
 import type { StygianPlanState } from "@/hooks/useStygianPlan";
+import { useAccountStore } from "@/stores/useAccountStore";
 import { useLineupStore } from "@/stores/useLineupStore";
 import { useTeamStore } from "@/stores/useTeamStore";
 import { render, screen } from "../../utils/render";
@@ -106,6 +107,7 @@ const RESULT = {
   ],
   issues: [],
   weaponCopies: {},
+  trace: { tasks: [], runs: [], memberStats: {} },
   partial: false,
 };
 
@@ -123,6 +125,7 @@ beforeEach(() => {
   };
   mocks.plan = { result: null, error: null, isSolving: true };
   mocks.planRequests = [];
+  useAccountStore.setState({ activeAccountId: null, accounts: {} });
 });
 
 describe("StygianLineup", () => {
@@ -176,5 +179,57 @@ describe("StygianLineup", () => {
     );
     expect(screen.getByText("Needs +36% damage")).toBeInTheDocument();
     expect(screen.queryByText("Hardest to lose")).not.toBeInTheDocument();
+  });
+
+  it("saves the run with its inputs as a debug file", async () => {
+    const user = userEvent.setup();
+    seed();
+    useAccountStore.setState({
+      activeAccountId: 1,
+      accounts: {
+        1: {
+          id: 1,
+          name: "Test",
+          data: { characters: [], extraArtifacts: [], extraWeapons: [] },
+          lastUpdate: 0,
+        },
+      },
+    });
+    const plan: StygianPlanResult = {
+      plans: [
+        {
+          kind: "leximin",
+          candidateIds: { b1: "c1", b2: "c2", b3: "c3" },
+          weakest: 0.88,
+        },
+      ],
+      missingEncounterIds: [],
+      binding: [],
+    };
+    mocks.plan = { result: plan, error: null, isSolving: false };
+    const blobs: Blob[] = [];
+    vi.stubGlobal("URL", {
+      ...URL,
+      createObjectURL: (blob: Blob) => {
+        blobs.push(blob);
+        return "blob:debug";
+      },
+      revokeObjectURL: () => {},
+    });
+    const click = vi
+      .spyOn(HTMLAnchorElement.prototype, "click")
+      .mockImplementation(() => {});
+    render(<StygianLineup />);
+    await user.click(screen.getByRole("button", { name: "Export debug file" }));
+    expect(click).toHaveBeenCalledOnce();
+    const data = JSON.parse(await blobs[0].text());
+    expect(data.format).toBe("genshintools-lineup-debug");
+    expect(data.request.mode).toBe("stygian");
+    expect(data.request.encounters).toHaveLength(3);
+    expect(data.result.candidates).toHaveLength(4);
+    expect(data.calibrated[0].margin).toBeCloseTo((1.2 * 110) / 90, 10);
+    expect(data.plan).toEqual({ mode: "stygian", result: plan });
+    click.mockRestore();
+    vi.unstubAllGlobals();
   });
 });

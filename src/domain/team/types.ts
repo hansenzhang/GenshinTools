@@ -81,6 +81,8 @@ interface TeamOptResultBase {
   bestArtifactsByChar: Record<string, Record<Slot, ArtifactData | null>>;
   passResults: TeamOptPassResult[];
   failReasons: Record<string, OptFailReason>;
+  /** Members whose stats don't move damage, filled from leftover pieces. */
+  saturatedCharIds?: string[];
   teamBuild?: TeamBuild;
   done: true;
 }

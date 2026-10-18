@@ -49,6 +49,7 @@ import type {
   SetConfigExplorerMessage,
   SetConfigExplorerRequest,
   SetConfigExplorerResult,
+  SetRunDiagnostics,
 } from "@/domain/team/setConfigExplorerTypes";
 import {
   buildTeamSlotConfigs,
@@ -426,6 +427,10 @@ export async function optimizeAssignmentOnAccount(
   }
   let found: ArtifactsByChar | null = null;
   let failReasons: Record<string, OptFailReason> = {};
+  const diagnostics: SetRunDiagnostics = {
+    saturatedCharIds: [],
+    substatWeights: {},
+  };
   try {
     for await (const update of runTeamOptimization({
       teamBuild: team,
@@ -458,6 +463,10 @@ export async function optimizeAssignmentOnAccount(
       if (!update.done) continue;
       found = { ...update.bestArtifactsByChar, ...forcedNow };
       failReasons = update.failReasons;
+      diagnostics.saturatedCharIds = update.saturatedCharIds ?? [];
+      for (const pass of update.passResults)
+        if (pass.substatWeights)
+          diagnostics.substatWeights[pass.charId] = pass.substatWeights;
     }
   } catch (error) {
     failReasons = Object.fromEntries(
@@ -470,7 +479,7 @@ export async function optimizeAssignmentOnAccount(
       ])
     );
   }
-  return scorePieces(screen, found ?? {}, failReasons);
+  return { ...scorePieces(screen, found ?? {}, failReasons), diagnostics };
 }
 
 export async function runSetConfigExplorer(

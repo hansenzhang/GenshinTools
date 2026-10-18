@@ -53,9 +53,11 @@ import {
 import {
   evaluateAssignment,
   generateAssignmentSheets,
+  makeAssignmentTeam,
   runSetConfigScreen,
+  type SetScreenInput,
 } from "@/domain/combat/lineup/setConfigScreen";
-import type { Slot } from "@/domain/enums";
+import type { Slot, StatKey } from "@/domain/enums";
 import type { ArtifactData } from "@/domain/models";
 import { artifactsById } from "@/domain/reference/catalog";
 import type {
@@ -73,11 +75,15 @@ import type {
   LineupCandidate,
   LineupIssue,
   LineupIssueReason,
+  LineupMemberStats,
+  LineupRunKind,
   LineupSolverMessage,
   LineupSolverRequest,
   LineupSolverResult,
   LineupSolverStage,
   LineupSolverTeam,
+  LineupSolverTrace,
+  LineupTaskTrace,
 } from "@/domain/team/lineupSolverTypes";
 import type {
   Calibration,
@@ -135,7 +141,14 @@ interface SolverState {
   byGear: Map<string, LineupCandidate>;
   /** Re-runs done, by candidate and excluded pieces. */
   reruns: Map<string, LineupCandidate | null>;
+  trace: LineupSolverTrace;
 }
+
+/** Screened assignments listed per composition in the trace. */
+const TRACED_OUTCOMES = 8;
+
+/** Stats the trace lists per member, besides the element's DMG bonus. */
+const TRACED_STATS: StatKey[] = ["hp", "atk", "def", "em", "er", "cr", "cd"];
 
 /** The request's encounters of its mode, Abyss halves in chamber order. */
 function modeEncounters(request: LineupSolverRequest): Encounter[] {
@@ -225,6 +238,20 @@ function tryTeamBuild(
   }
 }
 
+/** Sets the recorded build's pieces form; unknown set keys count as none. */
+function recordedSets(reference: ReferenceBuild): SetAssignment {
+  return Object.fromEntries(
+    reference.slots.map((slot) => [
+      slot.charId,
+      detectEquippedSets(
+        (reference.artifactsByChar[slot.charId] ?? []).filter(
+          (artifact) => !!artifactsById[artifact.setKey]
+        )
+      ),
+    ])
+  );
+}
+
 /** Model damage of the recorded build, scored with the sets its pieces form. */
 function scoreReference(
   reference: ReferenceBuild,
@@ -236,15 +263,11 @@ function scoreReference(
   userBuffOverrides: ReturnType<typeof extractComboOverrides>
 ): number | null {
   const { setupConfig } = task.team;
-  const configs = reference.slots.map((slot) => {
-    const pieces = reference.artifactsByChar[slot.charId] ?? [];
-    return {
-      ...slot,
-      artifactSet: detectEquippedSets(
-        pieces.filter((artifact) => !!artifactsById[artifact.setKey])
-      ),
-    };
-  });
+  const sets = recordedSets(reference);
+  const configs = reference.slots.map((slot) => ({
+    ...slot,
+    artifactSet: sets[slot.charId] ?? null,
+  }));
   const team = tryTeamBuild(configs, setupConfig, context);
   if (!team) return null;
   const combo = compositionObjective(
@@ -320,6 +343,93 @@ function addCandidate(
   state.byGear.set(key, candidate);
   state.candidates.push(candidate);
   state.sources.set(candidate.id, source);
+  state.trace.memberStats[candidate.id] = memberStats(
+    state,
+    { ...source.job.screen, configs: [...configs] },
+    account
+  );
+  return candidate;
+}
+
+/** Each member's final stats on the scored pieces, for the trace. */
+function memberStats(
+  state: SolverState,
+  screen: SetScreenInput,
+  account: SetAccountOutcome
+): Record<string, LineupMemberStats> {
+  const sheets = Object.fromEntries(
+    screen.configs.map((config) => [
+      config.charId,
+      StatSheet.fromArtifacts(
+        Object.values(account.artifactsByChar[config.charId] ?? {}).filter(
+          (artifact): artifact is ArtifactData => artifact !== null
+        )
+      ),
+    ])
+  );
+  try {
+    const stats = makeAssignmentTeam(screen, account.realized).getTeamStats(
+      sheets,
+      screen.carryCharId,
+      screen.displayContext
+    );
+    return Object.fromEntries(
+      screen.configs.map(({ charId }) => {
+        const sheet = stats[charId];
+        const element = state.chars[charId]?.element;
+        const keys: StatKey[] = element
+          ? [...TRACED_STATS, `${element.toLowerCase()}%` as StatKey, "dmg%"]
+          : [...TRACED_STATS, "dmg%"];
+        return [
+          charId,
+          Object.fromEntries(
+            keys.map((statKey) => [statKey, sheet?.get(statKey, null) ?? 0])
+          ),
+        ];
+      })
+    );
+  } catch {
+    return {};
+  }
+}
+
+/** Optimize an assignment on the account and record the run in the trace. */
+async function tracedRun(
+  state: SolverState,
+  kind: LineupRunKind,
+  source: CandidateSource,
+  generatedDamage: number | null,
+  excludedIds: readonly string[],
+  add: (outcome: SetAccountOutcome) => LineupCandidate | null
+): Promise<LineupCandidate | null> {
+  const { task, job, assignment } = source;
+  const start = performance.now();
+  const outcome = await optimizeAssignmentOnAccount(
+    job,
+    assignment,
+    state.runMs,
+    new Set(excludedIds)
+  );
+  const elapsedMs = performance.now() - start;
+  const candidate = add(outcome);
+  state.trace.runs.push({
+    kind,
+    templateId: task.team.template.id,
+    encounterId: task.encounter.id,
+    charIds: job.charIds,
+    assignment,
+    generatedDamage,
+    excludedArtifactCount: excludedIds.length,
+    runMs: state.runMs,
+    elapsedMs,
+    damage: outcome.damage,
+    realized: outcome.realized,
+    failReasons: outcome.failReasons,
+    unmetCharIds: outcome.unmetCharIds,
+    saturatedCharIds: outcome.diagnostics?.saturatedCharIds ?? [],
+    substatWeights: outcome.diagnostics?.substatWeights ?? {},
+    candidateId: candidate?.id ?? null,
+  });
   return candidate;
 }
 
@@ -420,6 +530,15 @@ async function generateTaskCandidates(
     contexts.display,
     userBuffOverrides
   );
+  const taskTrace: LineupTaskTrace = {
+    templateId: template.id,
+    encounterId: task.encounter.id,
+    referenceDamage,
+    referenceSets: recordedSets(task.calibration.reference),
+    compositions: [],
+    screens: [],
+  };
+  state.trace.tasks.push(taskTrace);
   if (referenceDamage == null) return "reference-unscored";
 
   const traits = (charId: string) => getCharacterTraits(charId, chars);
@@ -476,6 +595,10 @@ async function generateTaskCandidates(
     if (damage != null) ranked.push({ job, damage });
   }
   ranked.sort((a, b) => b.damage - a.damage);
+  taskTrace.compositions = ranked.map(({ job, damage }) => ({
+    charIds: job.charIds,
+    damage,
+  }));
   const picked = pickCompositions(ranked);
   if (picked.length === 0) return "no-composition";
 
@@ -491,6 +614,13 @@ async function generateTaskCandidates(
       (b.outcomes[b.best].generatedDamage ?? 0) -
       (a.outcomes[a.best].generatedDamage ?? 0)
   );
+  taskTrace.screens = screened.map((entry) => ({
+    charIds: entry.job.charIds,
+    outcomes: entry.order.slice(0, TRACED_OUTCOMES).flatMap((index) => {
+      const { assignment, generatedDamage } = entry.outcomes[index];
+      return generatedDamage == null ? [] : [{ assignment, generatedDamage }];
+    }),
+  }));
 
   // Round-robin: every composition's best, then each one's next finalist.
   const runs: { entry: ScreenedComposition; index: number }[] = [];
@@ -505,15 +635,18 @@ async function generateTaskCandidates(
   let found = 0;
   for (const [done, { entry, index }] of runs.entries()) {
     progress("optimize", done, runs.length);
-    const assignment = entry.outcomes[index].assignment;
-    const outcome = await optimizeAssignmentOnAccount(
-      entry.job,
-      assignment,
-      state.runMs
-    );
+    const { assignment, generatedDamage } = entry.outcomes[index];
     const source = { task, job: entry.job, assignment, referenceDamage };
-    if (addCandidate(state, source, entry.job.configs, outcome, "search"))
-      found++;
+    const candidate = await tracedRun(
+      state,
+      "search",
+      source,
+      generatedDamage ?? null,
+      [],
+      (outcome) =>
+        addCandidate(state, source, entry.job.configs, outcome, "search")
+    );
+    if (candidate) found++;
   }
   return found > 0 ? null : "no-candidate";
 }
@@ -631,19 +764,16 @@ async function rerunWithout(
   if (setup.kind !== "ready") return null;
   const screened = await screenComposition(setup.job);
   if (!screened) return null;
-  const assignment = screened.outcomes[screened.best].assignment;
-  const outcome = await optimizeAssignmentOnAccount(
-    setup.job,
-    assignment,
-    state.runMs,
-    new Set(excludedIds)
-  );
-  return addCandidate(
+  const { assignment, generatedDamage } = screened.outcomes[screened.best];
+  const rerun = { ...source, job: setup.job, assignment };
+  return tracedRun(
     state,
-    { ...source, job: setup.job, assignment },
-    setup.job.configs,
-    outcome,
-    "pieces-excluded"
+    "pieces-excluded",
+    rerun,
+    generatedDamage ?? null,
+    excludedIds,
+    (outcome) =>
+      addCandidate(state, rerun, setup.job.configs, outcome, "pieces-excluded")
   );
 }
 
@@ -882,11 +1012,17 @@ export async function runLineupSolver(
     sources: new Map(),
     byGear: new Map(),
     reruns: new Map(),
+    trace: { tasks: [], runs: [], memberStats: {} },
   };
   const snapshot = (partial: boolean): LineupSolverResult => ({
     candidates: [...state.candidates],
     issues: [...state.issues],
     weaponCopies: state.weaponCopies,
+    trace: {
+      tasks: [...state.trace.tasks],
+      runs: [...state.trace.runs],
+      memberStats: { ...state.trace.memberStats },
+    },
     partial,
   });
 

@@ -152,6 +152,7 @@ describe("AbyssLineups", () => {
         yelan_weapon: 1,
         diluc_weapon: 1,
       },
+      trace: { tasks: [], runs: [], memberStats: {} },
       partial: false,
     });
     const view = render(<AbyssLineups />);
@@ -187,6 +188,7 @@ describe("AbyssLineups", () => {
       candidates: [candidate("c1", "ta", "e1", ["hu_tao", "xingqiu"], 1.2)],
       issues: [{ templateId: "tb", encounterId: "e2", reason: "no-candidate" }],
       weaponCopies: { favonius_sword: 1 },
+      trace: { tasks: [], runs: [], memberStats: {} },
       partial: false,
     });
     render(<AbyssLineups />);

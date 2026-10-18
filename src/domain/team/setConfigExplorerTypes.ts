@@ -60,6 +60,15 @@ export interface SetAccountOutcome {
   failReasons: Record<string, OptFailReason>;
   /** Members below their ER/CR requirement. */
   unmetCharIds: string[];
+  /** What the optimizer reported, when the pieces came from a run. */
+  diagnostics?: SetRunDiagnostics;
+}
+
+export interface SetRunDiagnostics {
+  /** Members filled from leftover pieces, since their stats don't move damage. */
+  saturatedCharIds: string[];
+  /** Substat weights each member's pieces were ranked with. */
+  substatWeights: Record<string, Record<string, number>>;
 }
 
 export interface SetAssignmentOutcome {

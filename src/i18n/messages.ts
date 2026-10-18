@@ -2283,6 +2283,11 @@ export const i18nUiData = {
     timerPerHalf: { en: "Each half", zh: "上下半分开计时" },
     timerShared: { en: "Shared by both halves", zh: "上下半共用计时" },
     findLineups: { en: "Find lineups", zh: "搜索阵容" },
+    exportDebug: { en: "Export debug file", zh: "导出调试文件" },
+    exportDebugTip: {
+      en: "Saves this run's inputs and results, including your account data, as a JSON file for troubleshooting",
+      zh: "将本次搜索的输入和结果（含账号数据）保存为 JSON 文件，用于排查问题",
+    },
     needAbyssClear: {
       en: "Record a clear of an Abyss half to find lineups",
       zh: "记录一次深渊半场通关后才能搜索阵容",

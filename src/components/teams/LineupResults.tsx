@@ -1,4 +1,4 @@
-import { Loader2, Play } from "lucide-react";
+import { FileDown, Loader2, Play } from "lucide-react";
 import { type ReactNode, useMemo } from "react";
 import { ArtifactDataHoverCard } from "@/components/shared/ArtifactDataHoverCard";
 import { CharAvatar } from "@/components/shared/CharAvatar";
@@ -19,13 +19,16 @@ import {
   LINEUP_MARGIN_TIE_PERCENT,
   LINEUP_TIME_BUDGET_OPTIONS_SEC,
 } from "@/domain/combat/lineup/constants";
+import { buildLineupDebugExport } from "@/domain/combat/lineup/debugExport";
 import { allSlots } from "@/domain/enums";
 import type { ArtifactData } from "@/domain/models";
 import { calibratedMargin } from "@/domain/team/lineup";
 import type {
   BindingItem,
   CalibratedCandidate,
+  LineupDebugPlan,
   LineupIssueReason,
+  LineupSolverRequest,
   LineupSolverTeam,
 } from "@/domain/team/lineupSolverTypes";
 import type { EncounterMode } from "@/domain/team/lineupTypes";
@@ -185,9 +188,20 @@ export function useLineupJob(mode: EncounterMode, timeBudgetSec: number) {
         : [],
     [result, calibrations, encounters]
   );
-  const run = () => {
-    if (!accountData) return;
-    solver.start({
+  const request = useMemo<LineupSolverRequest | null>(
+    () =>
+      accountData
+        ? {
+            mode,
+            accountData,
+            encounters,
+            teams,
+            calibrations,
+            comboOverrides,
+            timeBudgetSec,
+          }
+        : null,
+    [
       mode,
       accountData,
       encounters,
@@ -195,7 +209,29 @@ export function useLineupJob(mode: EncounterMode, timeBudgetSec: number) {
       calibrations,
       comboOverrides,
       timeBudgetSec,
-    });
+    ]
+  );
+  const run = () => {
+    if (request) solver.start(request);
+  };
+  /** Saves the run's inputs and results as a JSON file. */
+  const exportDebug = (plan: LineupDebugPlan) => {
+    if (!request || !result) return;
+    const exportedAt = new Date();
+    const data = buildLineupDebugExport(
+      request,
+      result,
+      calibrated,
+      plan,
+      exportedAt
+    );
+    const blob = new Blob([JSON.stringify(data)], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `lineup-debug-${mode}-${exportedAt.toISOString().slice(0, 19).replace(/[:T]/g, "-")}.json`;
+    link.click();
+    URL.revokeObjectURL(url);
   };
   return {
     encounters,
@@ -203,8 +239,9 @@ export function useLineupJob(mode: EncounterMode, timeBudgetSec: number) {
     solver,
     calibrated,
     hasAccount: accountData != null,
-    canRun: accountData != null && teams.length > 0,
+    canRun: request != null && teams.length > 0,
     run,
+    exportDebug,
   };
 }
 
@@ -293,15 +330,18 @@ export function TimeBudgetSelect({
   );
 }
 
-/** Settings row, Run/Stop, a hint when it cannot run, progress and errors. */
+/** Settings row, Run/Stop, a hint when it cannot run, progress and errors.
+ *  A finished run can be saved with `debugPlan` for troubleshooting. */
 export function LineupRunControls({
   job,
   settings,
   needClearHint,
+  debugPlan,
 }: {
   job: ReturnType<typeof useLineupJob>;
   settings: ReactNode;
   needClearHint: string;
+  debugPlan: LineupDebugPlan;
 }) {
   const { t } = useLanguage();
   const { solver } = job;
@@ -317,24 +357,37 @@ export function LineupRunControls({
         {settings}
       </div>
       <div className="flex flex-col items-center gap-1 py-1">
-        <Button
-          onClick={solver.isComputing ? solver.stop : job.run}
-          disabled={!solver.isComputing && !job.canRun}
-          variant={solver.isComputing ? "destructive" : "default"}
-          size="sm"
-        >
-          {solver.isComputing ? (
-            <>
-              <Loader2 className="mr-1 h-4 w-4 animate-spin" />
-              {t.ui("common.stop")}
-            </>
-          ) : (
-            <>
-              <Play className="mr-1 h-4 w-4" />
-              {t.ui("lineup.findLineups")}
-            </>
+        <div className="flex flex-wrap items-center justify-center gap-2">
+          <Button
+            onClick={solver.isComputing ? solver.stop : job.run}
+            disabled={!solver.isComputing && !job.canRun}
+            variant={solver.isComputing ? "destructive" : "default"}
+            size="sm"
+          >
+            {solver.isComputing ? (
+              <>
+                <Loader2 className="mr-1 h-4 w-4 animate-spin" />
+                {t.ui("common.stop")}
+              </>
+            ) : (
+              <>
+                <Play className="mr-1 h-4 w-4" />
+                {t.ui("lineup.findLineups")}
+              </>
+            )}
+          </Button>
+          {solver.result && !solver.isComputing && (
+            <Button
+              onClick={() => job.exportDebug(debugPlan)}
+              variant="outline"
+              size="sm"
+              title={t.ui("lineup.exportDebugTip")}
+            >
+              <FileDown className="mr-1 h-4 w-4" />
+              {t.ui("lineup.exportDebug")}
+            </Button>
           )}
-        </Button>
+        </div>
         {!job.canRun && (
           <p className="text-center text-xs text-muted-foreground md:text-sm">
             {job.hasAccount ? needClearHint : t.ui("lineup.needAccountLineups")}

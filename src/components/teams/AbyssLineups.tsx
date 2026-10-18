@@ -205,6 +205,7 @@ export function AbyssLineups() {
         <LineupRunControls
           job={job}
           needClearHint={t.ui("lineup.needAbyssClear")}
+          debugPlan={{ mode: "abyss", chambers: plans }}
           settings={
             <>
               <TimeBudgetSelect
