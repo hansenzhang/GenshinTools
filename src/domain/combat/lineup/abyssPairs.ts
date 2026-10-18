@@ -46,10 +46,32 @@ function isTied(value: number, best: number, tiePercent: number): boolean {
   return value >= best * (1 - tiePercent / 100);
 }
 
+/** Same template and members with margins tied either way: the model cannot
+ *  tell the two apart. */
+function isEquivalent(
+  a: CalibratedCandidate | null,
+  b: CalibratedCandidate | null,
+  tiePercent: number
+): boolean {
+  if (!a || !b) return a === b;
+  const members = (candidate: CalibratedCandidate) =>
+    candidate.members
+      .map((member) => member.charId)
+      .sort()
+      .join(",");
+  return (
+    a.templateId === b.templateId &&
+    members(a) === members(b) &&
+    isTied(a.margin, b.margin, tiePercent) &&
+    isTied(b.margin, a.margin, tiePercent)
+  );
+}
+
 /**
  * Up to `limit` pairings, best first. Each pick is, among the remaining
  * pairings whose first key is tied with the best, the one with the highest
- * second key. A missing half is left out of the pairing.
+ * second key. Pairings equivalent to a pick on both halves are dropped, so
+ * the list shows distinct choices. A missing half is left out.
  */
 export function rankAbyssPairings(
   first: readonly CalibratedCandidate[],
@@ -59,7 +81,12 @@ export function rankAbyssPairings(
   tiePercent: number,
   limit: number
 ): AbyssPairing[] {
-  const options: { pairing: AbyssPairing; key: [number, number] }[] = [];
+  type Option = {
+    pairing: AbyssPairing;
+    halves: [CalibratedCandidate | null, CalibratedCandidate | null];
+    key: [number, number];
+  };
+  let options: Option[] = [];
   const add = (
     a: CalibratedCandidate | null,
     b: CalibratedCandidate | null
@@ -72,6 +99,7 @@ export function rankAbyssPairings(
         secondId: b?.id ?? null,
         margin: key[0],
       },
+      halves: [a, b],
       key,
     });
   };
@@ -92,8 +120,15 @@ export function rankAbyssPairings(
       if (!best || key[1] > best[1] || (key[1] === best[1] && key[0] > best[0]))
         pick = index;
     }
-    ranked.push(options[pick].pairing);
-    options.splice(pick, 1);
+    const picked = options[pick];
+    ranked.push(picked.pairing);
+    options = options.filter(
+      (option) =>
+        option !== picked &&
+        !option.halves.every((half, index) =>
+          isEquivalent(half, picked.halves[index], tiePercent)
+        )
+    );
   }
   return ranked;
 }

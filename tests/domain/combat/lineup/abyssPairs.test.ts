@@ -224,3 +224,31 @@ describe("planAbyssChambers", () => {
     });
   });
 });
+
+describe("rankAbyssPairings equivalents", () => {
+  it("drops pairings the model cannot tell apart from a better one", () => {
+    const sameTeam = (id: string, margin: number, charId = "hu_tao") => ({
+      ...candidate(id, "e1", [[charId, "homa"]], margin),
+      templateId: "template-hu-tao",
+    });
+    const partner = candidate("partner", "e2", [["xingqiu", "lance"]], 1);
+    const ranked = rankAbyssPairings(
+      [
+        sameTeam("best", 1.5),
+        sameTeam("twin", 1.49),
+        sameTeam("other-member", 1.48, "diluc"),
+        sameTeam("weaker", 1.3),
+      ],
+      [partner],
+      COPIES,
+      "per-half",
+      3,
+      10
+    );
+    expect(ranked.map((pairing) => pairing.firstId)).toEqual([
+      "best",
+      "other-member",
+      "weaker",
+    ]);
+  });
+});
