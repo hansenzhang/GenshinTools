@@ -159,6 +159,7 @@ async function main(): Promise<void> {
   let result: LineupSolverResult | null = null;
   await runLineupSolver(
     {
+      mode: "abyss",
       accountData: account,
       encounters,
       teams,

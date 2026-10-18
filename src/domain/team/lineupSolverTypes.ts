@@ -5,7 +5,12 @@ import type {
   ArtifactData,
   ArtifactSetConfig,
 } from "@/domain/models";
-import type { Calibration, Encounter, TeamTemplate } from "./lineupTypes";
+import type {
+  Calibration,
+  Encounter,
+  EncounterMode,
+  TeamTemplate,
+} from "./lineupTypes";
 import type { TeamComp, TeamSetupConfig } from "./types";
 
 // ─── Candidates ───
@@ -56,6 +61,24 @@ export interface CandidateClear {
 
 export type CalibratedCandidate = LineupCandidate & CandidateClear;
 
+// ─── Explaining a lineup ───
+
+/** A character, piece or weapon a lineup uses. */
+export interface LineupGear {
+  kind: "character" | "artifact" | "weapon";
+  /** Character id, artifact id or weapon key. */
+  id: string;
+}
+
+/**
+ * Gear the lineup uses that another encounter's candidates also want, with
+ * the lineup's margin after losing it: the gear removed, or one weapon copy
+ * fewer. Null when no lineup is left.
+ */
+export interface BindingItem extends LineupGear {
+  marginWithout: number | null;
+}
+
 // ─── Abyss plans ───
 
 /**
@@ -81,7 +104,46 @@ export interface AbyssChamberPlan {
   pairings: AbyssPairing[];
   /** Each half's best margin on its own, ignoring the other half. */
   bestAlone: { first: number | null; second: number | null };
+  /** Contested gear of the best pairing, most costly to lose first. */
+  binding: BindingItem[];
 }
+
+// ─── Stygian plans ───
+
+/**
+ * Leximin: the weakest boss's margin as high as possible, then the next.
+ * Shortfall: when no lineup clears every boss, the smallest total shortfall.
+ */
+export type StygianPlanKind = "leximin" | "shortfall";
+
+/** Three teams locked for a whole Stygian run, one per boss. */
+export interface StygianPlan {
+  kind: StygianPlanKind;
+  /** Chosen candidate per encounter id. */
+  candidateIds: Record<string, string>;
+  /** Lowest margin among the bosses. */
+  weakest: number;
+}
+
+export interface StygianPlanRequest {
+  encounterIds: string[];
+  candidates: CalibratedCandidate[];
+  weaponCopies: Record<string, number>;
+  tiePercent: number;
+}
+
+export interface StygianPlanResult {
+  /** The leximin plan, then the shortfall plan when it differs. */
+  plans: StygianPlan[];
+  /** Encounters without a candidate; the plans leave them out. */
+  missingEncounterIds: string[];
+  /** Contested gear of the leximin plan, most costly to lose first. */
+  binding: BindingItem[];
+}
+
+export type StygianPlanMessage =
+  | { type: "result"; id: number; result: StygianPlanResult }
+  | { type: "error"; id: number; details: string };
 
 // ─── Solver job ───
 
@@ -92,6 +154,8 @@ export interface LineupSolverTeam {
 }
 
 export interface LineupSolverRequest {
+  /** Which encounters the run fields candidates for. */
+  mode: EncounterMode;
   accountData: AccountData;
   encounters: Encounter[];
   teams: LineupSolverTeam[];

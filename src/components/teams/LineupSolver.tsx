@@ -574,6 +574,7 @@ export function LineupSolver() {
   const run = () => {
     if (!accountData) return;
     const request: LineupSolverRequest = {
+      mode: "abyss",
       accountData,
       encounters: abyss,
       teams,

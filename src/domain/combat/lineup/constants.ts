@@ -64,6 +64,9 @@ export const LINEUP_MAX_RUNS = 6;
 /** Re-runs per chamber that keep clear of the other half's gear. */
 export const LINEUP_MAX_DIVERSIFY_RUNS = 4;
 
+/** Contested pieces, characters and weapons re-solved without, per lineup. */
+export const LINEUP_BINDING_CHECKS = 16;
+
 export const LINEUP_TIME_BUDGET_OPTIONS_SEC = [30, 60, 120] as const;
 
 export const LINEUP_DEFAULT_TIME_BUDGET_SEC = 30;

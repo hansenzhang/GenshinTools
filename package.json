@@ -87,6 +87,7 @@
     "@tanstack/react-virtual": "3.14.15",
     "class-variance-authority": "0.7.1",
     "clsx": "2.1.1",
+    "highs": "1.15.3",
     "html-to-image": "1.11.13",
     "immer": "11.1.21",
     "jose": "6.2.12",

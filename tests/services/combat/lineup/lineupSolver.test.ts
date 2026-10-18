@@ -6,6 +6,7 @@ import {
   candidateArtifactIds,
   canFieldTogether,
 } from "@/domain/combat/lineup/candidates";
+import { planStygianRun } from "@/domain/combat/lineup/stygianPlan";
 import type { MainStat, Slot, SubStat } from "@/domain/enums";
 import type { AccountData, ArtifactData, CharacterData } from "@/domain/models";
 import {
@@ -25,10 +26,16 @@ import type {
   LineupSolverResult,
   LineupSolverTeam,
 } from "@/domain/team/lineupSolverTypes";
-import type { Calibration, Encounter } from "@/domain/team/lineupTypes";
+import type {
+  Calibration,
+  Encounter,
+  StygianEncounter,
+} from "@/domain/team/lineupTypes";
 import { teamCompInputToComp } from "@/domain/team/teamDeltas";
 import type { TeamComp, TeamSetupConfig } from "@/domain/team/types";
+import { solveMilp } from "@/services/combat/lineup/highsSolver";
 import { runLineupSolver } from "@/services/combat/lineup/lineupSolver";
+import { loadTestHighs } from "../../../helpers/highs";
 
 // Small inventories finish quickly; short runs and narrow screens keep the
 // suite light.
@@ -186,6 +193,7 @@ function request(
 ): LineupSolverRequest {
   const encounters = [encounter("first", 1), encounter("second", 2)];
   return {
+    mode: "abyss",
     accountData: account,
     encounters,
     teams: [teamA, teamB],
@@ -321,5 +329,98 @@ describe("runLineupSolver", () => {
         Math.min(...fielded.map((candidate) => candidate.margin))
       );
     }
+  }, 120_000);
+});
+
+describe("runLineupSolver for a Stygian run", () => {
+  // A third Pyro carry joins: all three want the great Crimson Witch set.
+  const MID_CW = pieces("mid", CW, ["atk%", "pyro%", "cd"], {
+    cr: 6,
+    cd: 12,
+  });
+  const TENACITY = pieces(
+    "tenacity",
+    "tenacity_of_the_millelith",
+    ["hp%", "hp%", "hp%"],
+    { "hp%": 10 }
+  );
+  const stygianAccount: AccountData = {
+    ...account,
+    characters: [
+      ...account.characters,
+      character("yoimiya", "thundering_pulse", MID_CW),
+      character("yelan", "aqua_simulacra", TENACITY),
+    ],
+  };
+  const teamC = solverTeam("c", [
+    ["yoimiya", "thundering_pulse"],
+    ["yelan", "aqua_simulacra"],
+  ]);
+  const boss = (id: string, bossId: number): StygianEncounter => ({
+    id,
+    mode: "stygian",
+    bossId,
+    enemyLevel: 100,
+    res: {},
+    targets: "",
+    downtimeSeconds: 10,
+    timeBarSeconds: 120,
+  });
+
+  it("fields one team per boss with no gear twice", async () => {
+    const encounters = [
+      boss("boss-1", 1),
+      boss("boss-2", 2),
+      boss("boss-3", 3),
+    ];
+    const teams = [teamA, teamB, teamC];
+    const calibrations = teams.map((team, index) => ({
+      ...calibrate(team, encounters[index].id),
+      reference: captureTeamReferenceBuild(
+        team.teamComp,
+        team.setupConfig,
+        stygianAccount,
+        1
+      )!,
+    }));
+    const input: LineupSolverRequest = {
+      mode: "stygian",
+      accountData: stygianAccount,
+      encounters: [...encounters, encounter("first", 1)],
+      teams,
+      calibrations,
+      comboOverrides: {},
+      timeBudgetSec: 1,
+    };
+    const result = finalResult(await run(input));
+    expect(result.issues).toEqual([]);
+    expect(new Set(result.candidates.map((c) => c.encounterId))).toEqual(
+      new Set(["boss-1", "boss-2", "boss-3"])
+    );
+    expect(result.candidates.some((c) => c.origin === "pieces-excluded")).toBe(
+      true
+    );
+
+    const highs = await loadTestHighs();
+    const calibrated = calibrateCandidates(
+      result.candidates,
+      calibrations,
+      encounters
+    );
+    const plan = planStygianRun(
+      {
+        encounterIds: encounters.map((entry) => entry.id),
+        candidates: calibrated,
+        weaponCopies: result.weaponCopies,
+        tiePercent: 3,
+      },
+      (model) => solveMilp(highs, model)
+    );
+    expect(plan.missingEncounterIds).toEqual([]);
+    const chosen = Object.values(plan.plans[0].candidateIds).map(
+      (id) => calibrated.find((candidate) => candidate.id === id)!
+    );
+    expect(chosen).toHaveLength(3);
+    expect(canFieldTogether(chosen, result.weaponCopies)).toBe(true);
   }, 120_000);
 });

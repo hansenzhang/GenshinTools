@@ -2,7 +2,8 @@
  * Abyss chamber pairing (docs/design/lineup-solver.md, P2): every first-half
  * candidate with every second-half candidate it shares no character, piece or
  * weapon copy with, ranked by the weaker half's margin and then the stronger
- * one's, or by the chamber margin when both halves share one timer.
+ * one's, or by the chamber margin when both halves share one timer. The best
+ * pairing's contested gear is re-ranked without each item (P3).
  */
 
 import type {
@@ -12,7 +13,7 @@ import type {
   CalibratedCandidate,
 } from "@/domain/team/lineupSolverTypes";
 import type { Encounter } from "@/domain/team/lineupTypes";
-import { canFieldTogether } from "./candidates";
+import { canFieldTogether, findBindingItems, marginsTied } from "./candidates";
 
 /**
  * Margin of halves played against one chamber timer whose bar is the sum of
@@ -42,10 +43,6 @@ function pairingKey(
     : [weakest, Math.max(...margins)];
 }
 
-function isTied(value: number, best: number, tiePercent: number): boolean {
-  return value >= best * (1 - tiePercent / 100);
-}
-
 /** Same template and members with margins tied either way: the model cannot
  *  tell the two apart. */
 function isEquivalent(
@@ -62,9 +59,45 @@ function isEquivalent(
   return (
     a.templateId === b.templateId &&
     members(a) === members(b) &&
-    isTied(a.margin, b.margin, tiePercent) &&
-    isTied(b.margin, a.margin, tiePercent)
+    marginsTied(a.margin, b.margin, tiePercent) &&
+    marginsTied(b.margin, a.margin, tiePercent)
   );
+}
+
+type Halves = [CalibratedCandidate | null, CalibratedCandidate | null];
+
+const fielded = (halves: Halves) =>
+  halves.filter((candidate) => candidate !== null);
+
+/** Every pairing that can be fielded; a missing half is left empty. */
+function feasiblePairings(
+  first: readonly CalibratedCandidate[],
+  second: readonly CalibratedCandidate[],
+  weaponCopies: Readonly<Record<string, number>>
+): Halves[] {
+  const all: Halves[] =
+    second.length === 0
+      ? first.map((a) => [a, null])
+      : first.length === 0
+        ? second.map((b) => [null, b])
+        : first.flatMap((a) => second.map((b): Halves => [a, b]));
+  return all.filter((halves) =>
+    canFieldTogether(fielded(halves), weaponCopies)
+  );
+}
+
+/** The highest first ranking key any pairing reaches, or null when none
+ *  can be fielded. */
+export function bestPairingMargin(
+  first: readonly CalibratedCandidate[],
+  second: readonly CalibratedCandidate[],
+  weaponCopies: Readonly<Record<string, number>>,
+  rule: AbyssTimerRule
+): number | null {
+  const margins = feasiblePairings(first, second, weaponCopies).map(
+    (halves) => pairingKey(fielded(halves), rule)[0]
+  );
+  return margins.length > 0 ? Math.max(...margins) : null;
 }
 
 /**
@@ -83,39 +116,30 @@ export function rankAbyssPairings(
 ): AbyssPairing[] {
   type Option = {
     pairing: AbyssPairing;
-    halves: [CalibratedCandidate | null, CalibratedCandidate | null];
+    halves: Halves;
     key: [number, number];
   };
-  let options: Option[] = [];
-  const add = (
-    a: CalibratedCandidate | null,
-    b: CalibratedCandidate | null
-  ) => {
-    const fielded = [a, b].filter((candidate) => candidate !== null);
-    const key = pairingKey(fielded, rule);
-    options.push({
-      pairing: {
-        firstId: a?.id ?? null,
-        secondId: b?.id ?? null,
-        margin: key[0],
-      },
-      halves: [a, b],
-      key,
-    });
-  };
-  if (second.length === 0) for (const a of first) add(a, null);
-  else if (first.length === 0) for (const b of second) add(null, b);
-  else
-    for (const a of first)
-      for (const b of second)
-        if (canFieldTogether([a, b], weaponCopies)) add(a, b);
+  let options: Option[] = feasiblePairings(first, second, weaponCopies).map(
+    ([a, b]) => {
+      const key = pairingKey(fielded([a, b]), rule);
+      return {
+        pairing: {
+          firstId: a?.id ?? null,
+          secondId: b?.id ?? null,
+          margin: key[0],
+        },
+        halves: [a, b],
+        key,
+      };
+    }
+  );
 
   const ranked: AbyssPairing[] = [];
   while (options.length > 0 && ranked.length < limit) {
     const top = Math.max(...options.map(({ key }) => key[0]));
     let pick = -1;
     for (const [index, { key }] of options.entries()) {
-      if (!isTied(key[0], top, tiePercent)) continue;
+      if (!marginsTied(key[0], top, tiePercent)) continue;
       const best = options[pick]?.key;
       if (!best || key[1] > best[1] || (key[1] === best[1] && key[0] > best[0]))
         pick = index;
@@ -173,19 +197,45 @@ export function planAbyssChambers(
         : [];
     const first = on(firstEncounter);
     const second = on(secondEncounter);
+    const pairings = rankAbyssPairings(
+      first,
+      second,
+      weaponCopies,
+      rule,
+      tiePercent,
+      limit
+    );
+    const best = pairings[0];
+    const lineup = best
+      ? [...first, ...second].filter(
+          (candidate) =>
+            candidate.id === best.firstId || candidate.id === best.secondId
+        )
+      : [];
     return {
       chamber,
       firstEncounterId: firstEncounter?.id ?? null,
       secondEncounterId: secondEncounter?.id ?? null,
-      pairings: rankAbyssPairings(
-        first,
-        second,
-        weaponCopies,
-        rule,
-        tiePercent,
-        limit
-      ),
+      pairings,
       bestAlone: { first: bestMargin(first), second: bestMargin(second) },
+      binding: best
+        ? findBindingItems(
+            lineup,
+            [...first, ...second],
+            weaponCopies,
+            bestPairingMargin(first, second, weaponCopies, rule) ?? best.margin,
+            (left, copies) => {
+              const isFirst = (c: CalibratedCandidate) =>
+                c.encounterId === firstEncounter?.id;
+              return bestPairingMargin(
+                left.filter(isFirst),
+                left.filter((c) => !isFirst(c)),
+                copies,
+                rule
+              );
+            }
+          )
+        : [],
     };
   });
 }

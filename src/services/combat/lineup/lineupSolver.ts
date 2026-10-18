@@ -80,8 +80,8 @@ import type {
   LineupSolverTeam,
 } from "@/domain/team/lineupSolverTypes";
 import type {
-  AbyssEncounter,
   Calibration,
+  Encounter,
   ReferenceBuild,
 } from "@/domain/team/lineupTypes";
 import type {
@@ -105,10 +105,10 @@ import {
 type Report = (message: LineupSolverMessage) => void;
 type ArtifactsByChar = Record<string, Record<Slot, ArtifactData | null>>;
 
-/** One template against one Abyss half it has a recorded clear for. */
+/** One template against one encounter it has a recorded clear for. */
 interface Task {
   team: LineupSolverTeam;
-  encounter: AbyssEncounter;
+  encounter: Encounter;
   calibration: Calibration;
 }
 
@@ -131,13 +131,43 @@ interface SolverState {
   candidates: LineupCandidate[];
   issues: LineupIssue[];
   sources: Map<string, CandidateSource>;
-  seen: Set<string>;
+  /** Candidates by gear, so the same build is listed once. */
+  byGear: Map<string, LineupCandidate>;
+  /** Re-runs done, by candidate and excluded pieces. */
+  reruns: Map<string, LineupCandidate | null>;
+}
+
+/** The request's encounters of its mode, Abyss halves in chamber order. */
+function modeEncounters(request: LineupSolverRequest): Encounter[] {
+  const encounters = request.encounters.filter(
+    (encounter) => encounter.mode === request.mode
+  );
+  return encounters.sort((a, b) =>
+    a.mode === "abyss" && b.mode === "abyss"
+      ? a.chamber - b.chamber || a.half - b.half
+      : 0
+  );
+}
+
+/** Encounters that share the account at once: an Abyss chamber's halves,
+ *  or a whole Stygian run. */
+function encounterGroups(request: LineupSolverRequest): Encounter[][] {
+  const encounters = modeEncounters(request);
+  if (request.mode === "stygian")
+    return encounters.length >= 2 ? [encounters] : [];
+  const chambers = new Map<number, Encounter[]>();
+  for (const encounter of encounters)
+    if (encounter.mode === "abyss")
+      chambers.set(encounter.chamber, [
+        ...(chambers.get(encounter.chamber) ?? []),
+        encounter,
+      ]);
+  return [...chambers.values()].filter((group) => group.length === 2);
 }
 
 function collectTasks(request: LineupSolverRequest): Task[] {
   const tasks: Task[] = [];
-  for (const encounter of request.encounters) {
-    if (encounter.mode !== "abyss") continue;
+  for (const encounter of modeEncounters(request)) {
     for (const team of request.teams) {
       const calibration = findCalibration(
         request.calibrations,
@@ -147,17 +177,13 @@ function collectTasks(request: LineupSolverRequest): Task[] {
       if (calibration) tasks.push({ team, encounter, calibration });
     }
   }
-  return tasks.sort(
-    (a, b) =>
-      a.encounter.chamber - b.encounter.chamber ||
-      a.encounter.half - b.encounter.half
-  );
+  return tasks;
 }
 
 /** Search and display contexts against the encounter's enemy. */
 function encounterContexts(
   setupConfig: TeamSetupConfig,
-  encounter: AbyssEncounter
+  encounter: Encounter
 ): { optimize: CalcContext; display: CalcContext } {
   const display = encounterCalcContext(
     encounter,
@@ -262,8 +288,8 @@ function candidateKey(candidate: LineupCandidate): string {
   ].join("|");
 }
 
-/** Adds the scored pieces as a candidate unless they are unreachable or
- *  already listed. */
+/** The scored pieces as a candidate, or the listed candidate with the same
+ *  gear. Null when the pieces are unreachable. */
 function addCandidate(
   state: SolverState,
   source: CandidateSource,
@@ -289,8 +315,9 @@ function addCandidate(
     origin,
   };
   const key = candidateKey(candidate);
-  if (state.seen.has(key)) return null;
-  state.seen.add(key);
+  const listed = state.byGear.get(key);
+  if (listed) return listed;
+  state.byGear.set(key, candidate);
   state.candidates.push(candidate);
   state.sources.set(candidate.id, source);
   return candidate;
@@ -641,66 +668,163 @@ function leaders(
   return [...best.values()];
 }
 
+/** Candidates combined into one, to keep a re-run clear of all of them. */
+function combined(candidates: readonly LineupCandidate[]): LineupCandidate {
+  return {
+    ...candidates[0],
+    id: candidates.map((candidate) => candidate.id).join("+"),
+    members: candidates.flatMap((candidate) => candidate.members),
+  };
+}
+
 /**
- * For leading candidates of opposite halves that share no character but
- * share pieces or weapon copies, add each one re-optimized without the
- * other's pieces, and with replacement weapons where copies run short.
+ * The candidate kept clear of `other`'s pieces (re-run) and of the weapon
+ * copies it needs (swapped). Null when a clear version cannot be found.
+ */
+async function keepClear(
+  state: SolverState,
+  candidate: LineupCandidate,
+  other: LineupCandidate
+): Promise<LineupCandidate | null> {
+  const source = state.sources.get(candidate.id);
+  if (!source) return null;
+  let clear: LineupCandidate | null = candidate;
+  if (
+    findContestedGear(candidate, other, state.weaponCopies).artifactIds.length >
+    0
+  ) {
+    const excluded = candidateArtifactIds(other);
+    const key = `${candidate.id}|${[...excluded].sort().join(",")}`;
+    if (!state.reruns.has(key))
+      state.reruns.set(key, await rerunWithout(state, source, excluded));
+    clear = state.reruns.get(key) ?? null;
+  }
+  if (!clear) return null;
+  return findContestedGear(clear, other, state.weaponCopies).weaponIds.length >
+    0
+    ? swapContestedWeapons(state, clear, other)
+    : clear;
+}
+
+/**
+ * Leading candidates of different encounters in a group that share pieces
+ * or weapon copies but no character, most promising first.
+ */
+function conflictingPairs(
+  state: SolverState,
+  group: readonly Encounter[],
+  strength: (candidate: LineupCandidate) => number
+): [LineupCandidate, LineupCandidate][] {
+  const pairs: [LineupCandidate, LineupCandidate][] = [];
+  group.forEach((first, index) => {
+    for (const second of group.slice(index + 1))
+      for (const a of leaders(state.candidates, first.id, strength))
+        for (const b of leaders(state.candidates, second.id, strength)) {
+          const contested = findContestedGear(a, b, state.weaponCopies);
+          if (
+            contested.charIds.length === 0 &&
+            (contested.artifactIds.length > 0 || contested.weaponIds.length > 0)
+          )
+            pairs.push([a, b]);
+        }
+  });
+  return pairs.sort(
+    ([a1, b1], [a2, b2]) =>
+      Math.min(strength(a2), strength(b2)) -
+      Math.min(strength(a1), strength(b1))
+  );
+}
+
+/**
+ * One lineup for the whole group, built encounter by encounter in order of
+ * each one's best strength: every pick is the strongest candidate sharing
+ * no character with the earlier picks, kept clear of their gear.
+ */
+async function chainLineup(
+  state: SolverState,
+  group: readonly Encounter[],
+  strength: (candidate: LineupCandidate) => number,
+  weakestFirst: boolean,
+  step: () => void
+): Promise<void> {
+  const best = (encounterId: string, taken: ReadonlySet<string>) =>
+    state.candidates
+      .filter(
+        (candidate) =>
+          candidate.encounterId === encounterId &&
+          !candidate.members.some((member) => taken.has(member.charId))
+      )
+      .sort((a, b) => strength(b) - strength(a))[0];
+  const order = [...group].sort((a, b) => {
+    const gap =
+      (best(a.id, new Set()) ? strength(best(a.id, new Set())) : 0) -
+      (best(b.id, new Set()) ? strength(best(b.id, new Set())) : 0);
+    return weakestFirst ? gap : -gap;
+  });
+  const lineup: LineupCandidate[] = [];
+  for (const encounter of order) {
+    const taken = new Set(
+      lineup.flatMap((chosen) => chosen.members.map((member) => member.charId))
+    );
+    const candidate = best(encounter.id, taken);
+    if (!candidate) return;
+    if (lineup.length === 0) {
+      lineup.push(candidate);
+      continue;
+    }
+    step();
+    const clear = await keepClear(state, candidate, combined(lineup));
+    if (!clear) return;
+    lineup.push(clear);
+  }
+}
+
+/**
+ * Alternatives that keep clear of other encounters' gear. In each group,
+ * leading candidates that share pieces or weapon copies but no character are
+ * fixed both ways, the most promising pairs first. A group of three or more
+ * also gets two encounter-by-encounter lineups, weakest and strongest first,
+ * so at least one full lineup fits together.
  */
 async function diversify(
   state: SolverState,
   progress: (done: number, total: number) => void
 ): Promise<void> {
-  const abyss = state.request.encounters.filter(
-    (encounter): encounter is AbyssEncounter => encounter.mode === "abyss"
-  );
-  // Margins where the clears give one, so halves compare; r otherwise.
+  // Margins where the clears give one, so encounters compare; r otherwise.
   const margins = new Map(
     calibrateCandidates(
       state.candidates,
       state.request.calibrations,
-      abyss
+      state.request.encounters
     ).map((candidate) => [candidate.id, candidate.margin])
   );
   const strength = (candidate: LineupCandidate) =>
     margins.get(candidate.id) ?? candidate.ratio;
-  const fixes: [LineupCandidate, LineupCandidate][] = [];
-  for (const chamber of new Set(abyss.map((encounter) => encounter.chamber))) {
-    const first = abyss.find((e) => e.chamber === chamber && e.half === 1);
-    const second = abyss.find((e) => e.chamber === chamber && e.half === 2);
-    if (!first || !second) continue;
-    const pairs = leaders(state.candidates, first.id, strength)
-      .flatMap((a) =>
-        leaders(state.candidates, second.id, strength).flatMap((b) => {
-          const contested = findContestedGear(a, b, state.weaponCopies);
-          return contested.charIds.length === 0 &&
-            (contested.artifactIds.length > 0 || contested.weaponIds.length > 0)
-            ? [[a, b] as const]
-            : [];
-        })
-      )
-      .sort(
-        ([a1, b1], [a2, b2]) =>
-          Math.min(strength(a2), strength(b2)) -
-          Math.min(strength(a1), strength(b1))
-      );
-    const chamberFixes: [LineupCandidate, LineupCandidate][] = [];
-    for (const [a, b] of pairs) {
-      if (chamberFixes.length >= LINEUP_MAX_DIVERSIFY_RUNS) break;
-      chamberFixes.push([a, b], [b, a]);
-    }
-    fixes.push(...chamberFixes.slice(0, LINEUP_MAX_DIVERSIFY_RUNS));
-  }
+  const groups = encounterGroups(state.request);
+  const fixes = groups.map((group) =>
+    conflictingPairs(state, group, strength)
+      .flatMap(([a, b]) => [
+        [a, b],
+        [b, a],
+      ])
+      .slice(0, LINEUP_MAX_DIVERSIFY_RUNS)
+  );
+  const chainSteps = groups.reduce(
+    (sum, group) => sum + (group.length >= 3 ? 2 * (group.length - 1) : 0),
+    0
+  );
+  const total = fixes.flat().length + chainSteps;
+  let done = 0;
+  const step = () => progress(done++, total);
 
-  for (const [done, [candidate, other]] of fixes.entries()) {
-    progress(done, fixes.length);
-    const source = state.sources.get(candidate.id);
-    if (!source) continue;
-    const clear =
-      findContestedGear(candidate, other, state.weaponCopies).artifactIds
-        .length > 0
-        ? await rerunWithout(state, source, candidateArtifactIds(other))
-        : candidate;
-    if (clear) swapContestedWeapons(state, clear, other);
+  for (const [index, group] of groups.entries()) {
+    if (group.length >= 3)
+      for (const weakestFirst of [true, false])
+        await chainLineup(state, group, strength, weakestFirst, step);
+    for (const [candidate, other] of fixes[index]) {
+      step();
+      await keepClear(state, candidate, other);
+    }
   }
 }
 
@@ -730,7 +854,8 @@ export async function runLineupSolver(
     candidates: [],
     issues: [],
     sources: new Map(),
-    seen: new Set(),
+    byGear: new Map(),
+    reruns: new Map(),
   };
   const snapshot = (partial: boolean): LineupSolverResult => ({
     candidates: [...state.candidates],
