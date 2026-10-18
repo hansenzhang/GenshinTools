@@ -9,17 +9,17 @@ import type {
   AbyssChamberPlan,
   AbyssPairing,
   AbyssTimerRule,
-  LineupCandidate,
+  CalibratedCandidate,
 } from "@/domain/team/lineupSolverTypes";
 import type { Encounter } from "@/domain/team/lineupTypes";
-import { canFieldTogether } from "./candidateConflicts";
+import { canFieldTogether } from "./candidates";
 
 /**
  * Margin of halves played against one chamber timer whose bar is the sum of
  * their bars: (Σ bar − Σ downtime) ÷ Σ predicted active time.
  */
 export function sharedTimerMargin(
-  candidates: readonly LineupCandidate[]
+  candidates: readonly CalibratedCandidate[]
 ): number {
   let room = 0;
   let active = 0;
@@ -32,7 +32,7 @@ export function sharedTimerMargin(
 
 /** Ranking keys, most important first. */
 function pairingKey(
-  candidates: readonly LineupCandidate[],
+  candidates: readonly CalibratedCandidate[],
   rule: AbyssTimerRule
 ): [number, number] {
   const margins = candidates.map((candidate) => candidate.margin);
@@ -52,15 +52,18 @@ function isTied(value: number, best: number, tiePercent: number): boolean {
  * second key. A missing half is left out of the pairing.
  */
 export function rankAbyssPairings(
-  first: readonly LineupCandidate[],
-  second: readonly LineupCandidate[],
+  first: readonly CalibratedCandidate[],
+  second: readonly CalibratedCandidate[],
   weaponCopies: Readonly<Record<string, number>>,
   rule: AbyssTimerRule,
   tiePercent: number,
   limit: number
 ): AbyssPairing[] {
   const options: { pairing: AbyssPairing; key: [number, number] }[] = [];
-  const add = (a: LineupCandidate | null, b: LineupCandidate | null) => {
+  const add = (
+    a: CalibratedCandidate | null,
+    b: CalibratedCandidate | null
+  ) => {
     const fielded = [a, b].filter((candidate) => candidate !== null);
     const key = pairingKey(fielded, rule);
     options.push({
@@ -95,7 +98,7 @@ export function rankAbyssPairings(
   return ranked;
 }
 
-function bestMargin(candidates: readonly LineupCandidate[]): number | null {
+function bestMargin(candidates: readonly CalibratedCandidate[]): number | null {
   return candidates.length > 0
     ? Math.max(...candidates.map((candidate) => candidate.margin))
     : null;
@@ -104,7 +107,7 @@ function bestMargin(candidates: readonly LineupCandidate[]): number | null {
 /** A plan for every Abyss chamber that has an encounter, in chamber order. */
 export function planAbyssChambers(
   encounters: readonly Encounter[],
-  candidates: readonly LineupCandidate[],
+  candidates: readonly CalibratedCandidate[],
   weaponCopies: Readonly<Record<string, number>>,
   rule: AbyssTimerRule,
   tiePercent: number,

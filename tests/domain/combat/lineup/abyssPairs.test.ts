@@ -7,11 +7,11 @@ import {
 import {
   canFieldTogether,
   findContestedGear,
-} from "@/domain/combat/lineup/candidateConflicts";
+} from "@/domain/combat/lineup/candidates";
 import type { Slot } from "@/domain/enums";
 import type { ArtifactData } from "@/domain/models";
 import { createAbyssEncounter } from "@/domain/team/lineup";
-import type { LineupCandidate } from "@/domain/team/lineupSolverTypes";
+import type { CalibratedCandidate } from "@/domain/team/lineupSolverTypes";
 
 const SLOTS: Slot[] = ["flower", "plume", "sands", "goblet", "circlet"];
 
@@ -40,7 +40,7 @@ function candidate(
   members: [string, string][],
   margin: number,
   barSeconds = 110
-): LineupCandidate {
+): CalibratedCandidate {
   return {
     id,
     templateId: `template-${id}`,
@@ -74,7 +74,7 @@ describe("canFieldTogether", () => {
       1
     );
     expect(canFieldTogether([a, sameChar], COPIES)).toBe(false);
-    const samePiece: LineupCandidate = {
+    const samePiece: CalibratedCandidate = {
       ...candidate("c", "e2", [["xingqiu", "sacrificial_sword"]], 1),
     };
     samePiece.members[0].artifacts.flower = a.members[0].artifacts.flower;

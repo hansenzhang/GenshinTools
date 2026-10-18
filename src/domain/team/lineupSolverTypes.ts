@@ -28,9 +28,8 @@ export interface LineupMember {
 export type CandidateOrigin = "search" | "pieces-excluded" | "weapon-swapped";
 
 /**
- * One way to field a template against an encounter from the account, with
- * its calibrated margin. Members, pieces and weapon copies are exclusive
- * within a lineup.
+ * One way to field a template against an encounter from the account.
+ * Members, pieces and weapon copies are exclusive within a lineup.
  */
 export interface LineupCandidate {
   id: string;
@@ -42,14 +41,20 @@ export interface LineupCandidate {
   /** Model DPS ratio r against the calibrated reference build. Both share
    *  the template's rotation seconds, so this is the damage ratio. */
   ratio: number;
+  origin: CandidateOrigin;
+}
+
+/** A candidate's predicted clear against the recorded clear and the bar. */
+export interface CandidateClear {
   /** r · (T_req − D) / (T_meas − D); 1 meets the bar exactly. */
   margin: number;
   /** Predicted seconds spent dealing damage: (T_meas − D) / r. */
   activeSeconds: number;
   downtimeSeconds: number;
   barSeconds: number;
-  origin: CandidateOrigin;
 }
+
+export type CalibratedCandidate = LineupCandidate & CandidateClear;
 
 // ─── Abyss plans ───
 
@@ -99,8 +104,6 @@ export interface LineupSolverRequest {
 
 /** Why a template's calibrated encounter produced no candidates. */
 export type LineupIssueReason =
-  | "no-bar"
-  | "downtime-too-long"
   | "no-objective"
   | "reference-unscored"
   | "no-composition"

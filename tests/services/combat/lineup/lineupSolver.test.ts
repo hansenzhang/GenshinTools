@@ -2,9 +2,10 @@ import "@/providers/reference/statLoaders";
 import { beforeAll, describe, expect, it, vi } from "vitest";
 import { planAbyssChambers } from "@/domain/combat/lineup/abyssPairs";
 import {
+  calibrateCandidates,
   candidateArtifactIds,
   canFieldTogether,
-} from "@/domain/combat/lineup/candidateConflicts";
+} from "@/domain/combat/lineup/candidates";
 import type { MainStat, Slot, SubStat } from "@/domain/enums";
 import type { AccountData, ArtifactData, CharacterData } from "@/domain/models";
 import {
@@ -216,18 +217,56 @@ describe("runLineupSolver", () => {
     expect(messages).toEqual([{ type: "error", reason: "no-calibrations" }]);
   });
 
-  it("reports a half without a time bar", async () => {
-    const input = request({ teams: [teamA] });
+  it("reports a team without a rotation", async () => {
+    const silent: LineupSolverTeam = {
+      ...teamA,
+      setupConfig: {
+        combatOptions: {},
+        damage: {
+          formulaMode: "combo",
+          combo: { id: "empty", label: { en: "", zh: "" }, lines: [] },
+        },
+      },
+    };
+    const result = finalResult(
+      await run(
+        request({ teams: [silent], calibrations: [calibrate(silent, "first")] })
+      )
+    );
+    expect(result.issues).toEqual([
+      {
+        templateId: "template-a",
+        encounterId: "first",
+        reason: "no-objective",
+      },
+    ]);
+  });
+
+  it("leaves margins to the recorded clear and the bar", async () => {
+    const input = request({
+      teams: [teamA],
+      calibrations: [calibrate(teamA, "first")],
+    });
     input.encounters = input.encounters.map((entry) => ({
       ...entry,
       timeBarSeconds: null,
     }));
-    input.calibrations = [calibrate(teamA, "first")];
     const result = finalResult(await run(input));
-    expect(result.candidates).toEqual([]);
-    expect(result.issues).toEqual([
-      { templateId: "template-a", encounterId: "first", reason: "no-bar" },
-    ]);
+    expect(result.candidates.length).toBeGreaterThan(0);
+    expect(
+      calibrateCandidates(
+        result.candidates,
+        input.calibrations,
+        input.encounters
+      )
+    ).toEqual([]);
+    const withBar = request().encounters;
+    const [best] = calibrateCandidates(
+      result.candidates,
+      input.calibrations,
+      withBar
+    );
+    expect(best.margin).toBeCloseTo((best.ratio * 110) / 90, 10);
   });
 
   it("finds a conflict-free pairing when both halves want the same gear", async () => {
@@ -236,7 +275,14 @@ describe("runLineupSolver", () => {
     const result = finalResult(messages);
     expect(result.issues).toEqual([]);
     expect(result.weaponCopies.favonius_sword).toBe(1);
-    for (const candidate of result.candidates) {
+    const input = request();
+    const calibrated = calibrateCandidates(
+      result.candidates,
+      input.calibrations,
+      input.encounters
+    );
+    expect(calibrated).toHaveLength(result.candidates.length);
+    for (const candidate of calibrated) {
       // margin = r · (T_req − D) / (T_meas − D) with r against the clear.
       expect(candidate.margin).toBeCloseTo((candidate.ratio * 110) / 90, 10);
       expect(candidate.activeSeconds).toBeCloseTo(90 / candidate.ratio, 10);
@@ -256,15 +302,15 @@ describe("runLineupSolver", () => {
     expect(origins.has("weapon-swapped")).toBe(true);
 
     const [plan] = planAbyssChambers(
-      request().encounters,
-      result.candidates,
+      input.encounters,
+      calibrated,
       result.weaponCopies,
       "per-half",
       3,
       4
     );
     expect(plan.pairings.length).toBeGreaterThan(0);
-    const byId = new Map(result.candidates.map((c) => [c.id, c]));
+    const byId = new Map(calibrated.map((c) => [c.id, c]));
     for (const pairing of plan.pairings) {
       const fielded = [
         byId.get(pairing.firstId!)!,

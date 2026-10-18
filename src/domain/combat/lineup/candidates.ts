@@ -1,4 +1,13 @@
-import type { LineupCandidate } from "@/domain/team/lineupSolverTypes";
+import {
+  calibratedMargin,
+  calibrationTimes,
+  findCalibration,
+} from "@/domain/team/lineup";
+import type {
+  CalibratedCandidate,
+  LineupCandidate,
+} from "@/domain/team/lineupSolverTypes";
+import type { Calibration, Encounter } from "@/domain/team/lineupTypes";
 
 export function candidateArtifactIds(candidate: LineupCandidate): string[] {
   return candidate.members.flatMap((member) =>
@@ -75,4 +84,37 @@ export function findContestedGear(
         (weaponCopies[weaponId] ?? 0)
     ),
   };
+}
+
+/**
+ * Candidates with their predicted clear against the current recorded clears
+ * and bars; candidates whose clear gives no margin are left out.
+ */
+export function calibrateCandidates(
+  candidates: readonly LineupCandidate[],
+  calibrations: readonly Calibration[],
+  encounters: readonly Encounter[]
+): CalibratedCandidate[] {
+  const encountersById = new Map(
+    encounters.map((encounter) => [encounter.id, encounter])
+  );
+  return candidates.flatMap((candidate) => {
+    const encounter = encountersById.get(candidate.encounterId);
+    const calibration =
+      encounter &&
+      findCalibration(calibrations, candidate.templateId, encounter.id);
+    if (!calibration) return [];
+    const readout = calibratedMargin(candidate.ratio, calibration, encounter);
+    const times = calibrationTimes(calibration, encounter);
+    if (readout.kind !== "margin" || !times) return [];
+    return [
+      {
+        ...candidate,
+        margin: readout.margin,
+        activeSeconds: (times.measured - times.downtime) / candidate.ratio,
+        downtimeSeconds: times.downtime,
+        barSeconds: times.bar,
+      },
+    ];
+  });
 }

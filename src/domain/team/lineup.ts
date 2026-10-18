@@ -224,7 +224,7 @@ export function captureTeamReferenceBuild(
 }
 
 export function findCalibration(
-  calibrations: Calibration[],
+  calibrations: readonly Calibration[],
   templateId: string,
   encounterId: string
 ): Calibration | undefined {

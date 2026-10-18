@@ -4,10 +4,13 @@
  * For each Abyss half a template has a recorded clear for, field the
  * template's compositions from the account, screen their sets with generated
  * artifacts under the half's enemy, optimize the finalists on the real
- * inventory and turn every result into a candidate with its calibrated
- * margin. Then the best candidates of each chamber are re-run without the
- * gear the other half's best candidates need, so the pairing step has
- * conflict-free alternatives.
+ * inventory and turn every result into a candidate with its model ratio r
+ * to the recorded build. Then the best candidates of each chamber are re-run
+ * without the gear the other half's best candidates need, so the pairing step
+ * has conflict-free alternatives.
+ *
+ * Margins are left to the caller: they follow from r and the recorded clear
+ * and bar, which can change without changing any candidate.
  */
 
 import { TIER_LIST_SUPPORT_ARTIFACT_SETS } from "@/config/gameConstants";
@@ -24,10 +27,11 @@ import type {
 } from "@/domain/combat/damage/types";
 import { resolveCalcContext } from "@/domain/combat/damage/utils";
 import {
+  calibrateCandidates,
   candidateArtifactIds,
   candidateWeaponUses,
   findContestedGear,
-} from "@/domain/combat/lineup/candidateConflicts";
+} from "@/domain/combat/lineup/candidates";
 import {
   compositionObjective,
   countWeaponCopies,
@@ -59,8 +63,6 @@ import type {
   WeaponStatsMap,
 } from "@/domain/reference/stats";
 import {
-  calibratedMargin,
-  calibrationTimes,
   encounterCalcContext,
   findCalibration,
   getCharacterTraits,
@@ -80,7 +82,6 @@ import type {
 import type {
   AbyssEncounter,
   Calibration,
-  CalibrationTimes,
   ReferenceBuild,
 } from "@/domain/team/lineupTypes";
 import type {
@@ -117,7 +118,6 @@ interface CandidateSource {
   job: TeamSetsJob;
   assignment: SetAssignment;
   referenceDamage: number;
-  times: CalibrationTimes;
 }
 
 interface SolverState {
@@ -272,10 +272,7 @@ function addCandidate(
   origin: CandidateOrigin
 ): LineupCandidate | null {
   if (account.damage == null) return null;
-  const { task, referenceDamage, times } = source;
-  const ratio = account.damage / referenceDamage;
-  const readout = calibratedMargin(ratio, task.calibration, task.encounter);
-  if (readout.kind !== "margin") return null;
+  const { task, referenceDamage } = source;
   const candidate: LineupCandidate = {
     id: `candidate-${state.candidates.length}`,
     templateId: task.team.template.id,
@@ -288,11 +285,7 @@ function addCandidate(
       artifacts: account.artifactsByChar[config.charId],
     })),
     damage: account.damage,
-    ratio,
-    margin: readout.margin,
-    activeSeconds: (times.measured - times.downtime) / ratio,
-    downtimeSeconds: times.downtime,
-    barSeconds: times.bar,
+    ratio: account.damage / referenceDamage,
     origin,
   };
   const key = candidateKey(candidate);
@@ -378,11 +371,6 @@ async function generateTaskCandidates(
   const { request, chars } = state;
   const account = request.accountData;
   const { template, teamComp, setupConfig } = task.team;
-  const probe = calibratedMargin(1, task.calibration, task.encounter);
-  if (probe.kind !== "margin") return probe.kind;
-  const times = calibrationTimes(task.calibration, task.encounter);
-  if (!times) return "no-bar";
-
   const contexts = encounterContexts(setupConfig, task.encounter);
   const teamConfigs = buildTeamSlotConfigs(teamComp, setupConfig, account);
   const teamBuild = tryTeamBuild(teamConfigs, setupConfig, contexts.display);
@@ -496,7 +484,7 @@ async function generateTaskCandidates(
       assignment,
       state.runMs
     );
-    const source = { task, job: entry.job, assignment, referenceDamage, times };
+    const source = { task, job: entry.job, assignment, referenceDamage };
     if (addCandidate(state, source, entry.job.configs, outcome, "search"))
       found++;
   }
@@ -636,7 +624,8 @@ async function rerunWithout(
  *  template and composition. */
 function leaders(
   candidates: readonly LineupCandidate[],
-  encounterId: string
+  encounterId: string,
+  strength: (candidate: LineupCandidate) => number
 ): LineupCandidate[] {
   const best = new Map<string, LineupCandidate>();
   for (const candidate of candidates) {
@@ -646,7 +635,8 @@ function leaders(
       .sort()
       .join(",")}`;
     const current = best.get(key);
-    if (!current || candidate.margin > current.margin) best.set(key, candidate);
+    if (!current || strength(candidate) > strength(current))
+      best.set(key, candidate);
   }
   return [...best.values()];
 }
@@ -663,14 +653,24 @@ async function diversify(
   const abyss = state.request.encounters.filter(
     (encounter): encounter is AbyssEncounter => encounter.mode === "abyss"
   );
+  // Margins where the clears give one, so halves compare; r otherwise.
+  const margins = new Map(
+    calibrateCandidates(
+      state.candidates,
+      state.request.calibrations,
+      abyss
+    ).map((candidate) => [candidate.id, candidate.margin])
+  );
+  const strength = (candidate: LineupCandidate) =>
+    margins.get(candidate.id) ?? candidate.ratio;
   const fixes: [LineupCandidate, LineupCandidate][] = [];
   for (const chamber of new Set(abyss.map((encounter) => encounter.chamber))) {
     const first = abyss.find((e) => e.chamber === chamber && e.half === 1);
     const second = abyss.find((e) => e.chamber === chamber && e.half === 2);
     if (!first || !second) continue;
-    const pairs = leaders(state.candidates, first.id)
+    const pairs = leaders(state.candidates, first.id, strength)
       .flatMap((a) =>
-        leaders(state.candidates, second.id).flatMap((b) => {
+        leaders(state.candidates, second.id, strength).flatMap((b) => {
           const contested = findContestedGear(a, b, state.weaponCopies);
           return contested.charIds.length === 0 &&
             (contested.artifactIds.length > 0 || contested.weaponIds.length > 0)
@@ -680,7 +680,8 @@ async function diversify(
       )
       .sort(
         ([a1, b1], [a2, b2]) =>
-          Math.min(a2.margin, b2.margin) - Math.min(a1.margin, b1.margin)
+          Math.min(strength(a2), strength(b2)) -
+          Math.min(strength(a1), strength(b1))
       );
     const chamberFixes: [LineupCandidate, LineupCandidate][] = [];
     for (const [a, b] of pairs) {
