@@ -43,6 +43,7 @@ import { artifactsById } from "@/domain/reference/catalog";
 import type { CharacterStatsMap } from "@/domain/reference/stats";
 import { computeTeamInventory } from "@/domain/team/artifactInventory";
 import type {
+  OptRunPosition,
   SetAccountOutcome,
   SetAssignment,
   SetAssignmentOutcome,
@@ -56,7 +57,12 @@ import {
   buildTeamSlotConfigs,
   detectEquippedSets,
 } from "@/domain/team/teamConfigUtils";
-import type { CharOptConfig, OptFailReason } from "@/domain/team/types";
+import type {
+  CharOptConfig,
+  OptFailReason,
+  OptPhase,
+  TeamOptimizationProgress,
+} from "@/domain/team/types";
 import { runTeamOptimization } from "../optimizer/teamOptimization";
 
 type Report = (message: SetConfigExplorerMessage) => void;
@@ -355,15 +361,72 @@ export function prepareTeamSetsJob(
 }
 
 /**
+ * Records a run's spans and members' search times from the optimizer's
+ * progress, and reports where the run is whenever that changes.
+ */
+function trackRunTimeline(
+  diagnostics: SetRunDiagnostics,
+  onPosition?: (position: OptRunPosition) => void
+) {
+  const start = performance.now();
+  let span: { phase: OptPhase; round: number | null; at: number } = {
+    phase: "init",
+    round: null,
+    at: start,
+  };
+  let rounds = 0;
+  let searching: string[] = [];
+  let reported: OptRunPosition | null = null;
+  const close = (now: number) =>
+    diagnostics.phases.push({
+      phase: span.phase,
+      round: span.round,
+      ms: now - span.at,
+    });
+  return {
+    step(update: TeamOptimizationProgress) {
+      const now = performance.now();
+      // The init step comes just before the per-character search starts;
+      // refinement steps once per round.
+      const phase = update.phase === "init" ? "phase1" : update.phase;
+      if (phase !== span.phase || phase === "phase3") {
+        close(now);
+        span = { phase, round: phase === "phase3" ? ++rounds : null, at: now };
+      }
+      // Parallel searches list the members still running.
+      const live =
+        phase === "phase1" ? Object.keys(update.workerBestDamage ?? {}) : [];
+      for (const charId of searching)
+        if (!live.includes(charId))
+          diagnostics.memberSearchMs[charId] = now - start;
+      searching = live;
+      if (
+        reported?.phase !== phase ||
+        reported.round !== span.round ||
+        reported.searching.join() !== live.join()
+      ) {
+        reported = { phase, round: span.round, searching: live };
+        onPosition?.(reported);
+      }
+    },
+    finish() {
+      close(performance.now());
+    },
+  };
+}
+
+/**
  * Optimize one set assignment on the account's pieces and score what the
  * optimizer finds with the sets those pieces form. `runMs` null searches
- * until done; `excludedIds` keeps pieces out of every member's pool.
+ * until done; `excludedIds` keeps pieces out of every member's pool;
+ * `onPosition` hears where the run is.
  */
 export async function optimizeAssignmentOnAccount(
   job: TeamSetsJob,
   assignment: SetAssignment,
   runMs: number | null,
-  excludedIds: ReadonlySet<string> = new Set()
+  excludedIds: ReadonlySet<string> = new Set(),
+  onPosition?: (position: OptRunPosition) => void
 ): Promise<SetAccountOutcome> {
   const { request, configs, charIds, combo, screen } = job;
   const account = request.accountData;
@@ -418,7 +481,10 @@ export async function optimizeAssignmentOnAccount(
   const diagnostics: SetRunDiagnostics = {
     saturatedCharIds: [],
     substatWeights: {},
+    phases: [],
+    memberSearchMs: {},
   };
+  const timeline = trackRunTimeline(diagnostics, onPosition);
   try {
     for await (const update of runTeamOptimization({
       teamBuild: team,
@@ -448,7 +514,11 @@ export async function optimizeAssignmentOnAccount(
       ),
       perCharExcludedArtifactIds: request.perCharExcludedArtifactIds,
     })) {
-      if (!update.done) continue;
+      if (!update.done) {
+        timeline.step(update);
+        continue;
+      }
+      timeline.finish();
       found = { ...update.bestArtifactsByChar, ...forcedNow };
       failReasons = update.failReasons;
       diagnostics.saturatedCharIds = update.saturatedCharIds ?? [];

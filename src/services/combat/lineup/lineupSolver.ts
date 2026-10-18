@@ -83,6 +83,7 @@ import type {
   LineupIssueReason,
   LineupMemberStats,
   LineupRunKind,
+  LineupRunStart,
   LineupSolverMessage,
   LineupSolverRequest,
   LineupSolverResult,
@@ -115,6 +116,7 @@ import {
 } from "./setConfigExplorer";
 
 type Report = (message: LineupSolverMessage) => void;
+type ProgressMessage = Extract<LineupSolverMessage, { type: "progress" }>;
 type ArtifactsByChar = Record<string, Record<Slot, ArtifactData | null>>;
 
 /** One template against one encounter it has a recorded clear for. */
@@ -134,6 +136,9 @@ interface CandidateSource {
 
 interface SolverState {
   request: LineupSolverRequest;
+  report: Report;
+  /** The stage's latest progress; a run's position is added to it. */
+  progress: ProgressMessage | null;
   chars: CharacterStatsMap;
   weapons: WeaponStatsMap;
   weaponCopies: Record<string, number>;
@@ -417,6 +422,32 @@ function memberStats(
   }
 }
 
+function snapshot(state: SolverState, partial: boolean): LineupSolverResult {
+  return {
+    candidates: [...state.candidates],
+    issues: [...state.issues],
+    weaponCopies: state.weaponCopies,
+    setSlotCounts: state.setSlotCounts,
+    trace: {
+      tasks: [...state.trace.tasks],
+      runs: [...state.trace.runs],
+      inFlight: state.trace.inFlight,
+      memberStats: { ...state.trace.memberStats },
+    },
+    partial,
+  };
+}
+
+/** Results so far, with the trace, so a stopped job can still be saved. */
+function publish(state: SolverState): void {
+  state.report({ type: "partial", result: snapshot(state, true) });
+}
+
+function reportProgress(state: SolverState, message: ProgressMessage): void {
+  state.progress = message;
+  state.report(message);
+}
+
 /** Optimize an assignment on the account and record the run in the trace. */
 async function tracedRun(
   state: SolverState,
@@ -426,20 +457,7 @@ async function tracedRun(
   add: (outcome: SetAccountOutcome) => LineupCandidate | null
 ): Promise<LineupCandidate | null> {
   const { task, job, assignment } = source;
-  const start = performance.now();
-  const outcome = await optimizeAssignmentOnAccount(
-    job,
-    assignment,
-    state.runMs,
-    new Set(excludedIds)
-  );
-  const elapsedMs = performance.now() - start;
-  // A member whose search timed out got a quick fill, not a search result.
-  const timedOut = Object.values(outcome.failReasons).some(
-    (reason) => reason.kind === "timeout"
-  );
-  const candidate = timedOut ? null : add(outcome);
-  state.trace.runs.push({
+  const started: LineupRunStart = {
     kind: run.kind,
     templateId: task.team.template.id,
     encounterId: task.encounter.id,
@@ -449,6 +467,32 @@ async function tracedRun(
     accountEstimate: run.accountEstimate,
     excludedArtifactCount: excludedIds.length,
     runMs: state.runMs,
+    startedAt: Date.now(),
+  };
+  state.trace.inFlight = started;
+  publish(state);
+  const start = performance.now();
+  const outcome = await optimizeAssignmentOnAccount(
+    job,
+    assignment,
+    state.runMs,
+    new Set(excludedIds),
+    (position) => {
+      if (state.progress)
+        state.report({
+          ...state.progress,
+          run: { ...position, startedAt: started.startedAt },
+        });
+    }
+  );
+  const elapsedMs = performance.now() - start;
+  // A member whose search timed out got a quick fill, not a search result.
+  const timedOut = Object.values(outcome.failReasons).some(
+    (reason) => reason.kind === "timeout"
+  );
+  const candidate = timedOut ? null : add(outcome);
+  state.trace.runs.push({
+    ...started,
     elapsedMs,
     damage: outcome.damage,
     realized: outcome.realized,
@@ -456,8 +500,13 @@ async function tracedRun(
     unmetCharIds: outcome.unmetCharIds,
     saturatedCharIds: outcome.diagnostics?.saturatedCharIds ?? [],
     substatWeights: outcome.diagnostics?.substatWeights ?? {},
+    phases: outcome.diagnostics?.phases ?? [],
+    memberSearchMs: outcome.diagnostics?.memberSearchMs ?? {},
     candidateId: candidate?.id ?? null,
   });
+  state.trace.inFlight = null;
+  publish(state);
+  if (state.progress) state.report(state.progress);
   return candidate;
 }
 
@@ -1199,6 +1248,8 @@ export async function runLineupSolver(
         );
   const state: SolverState = {
     request,
+    report,
+    progress: null,
     chars,
     weapons,
     weaponCopies: countWeaponCopies(request.accountData),
@@ -1221,26 +1272,14 @@ export async function runLineupSolver(
     sources: new Map(),
     byGear: new Map(),
     reruns: new Map(),
-    trace: { tasks: [], runs: [], memberStats: {} },
+    trace: { tasks: [], runs: [], inFlight: null, memberStats: {} },
   };
-  const snapshot = (partial: boolean): LineupSolverResult => ({
-    candidates: [...state.candidates],
-    issues: [...state.issues],
-    weaponCopies: state.weaponCopies,
-    setSlotCounts: state.setSlotCounts,
-    trace: {
-      tasks: [...state.trace.tasks],
-      runs: [...state.trace.runs],
-      memberStats: { ...state.trace.memberStats },
-    },
-    partial,
-  });
 
   for (const [index, task] of tasks.entries()) {
     let reason: LineupIssueReason | null;
     try {
       reason = await generateTaskCandidates(state, task, (stage, done, total) =>
-        report({
+        reportProgress(state, {
           type: "progress",
           stage,
           task: index,
@@ -1251,6 +1290,7 @@ export async function runLineupSolver(
       );
     } catch {
       reason = "calculator-error";
+      state.trace.inFlight = null;
     }
     if (reason)
       state.issues.push({
@@ -1258,11 +1298,11 @@ export async function runLineupSolver(
         encounterId: task.encounter.id,
         reason,
       });
-    report({ type: "partial", result: snapshot(true) });
+    publish(state);
   }
 
   await diversify(state, (done, total) =>
-    report({
+    reportProgress(state, {
       type: "progress",
       stage: "diversify",
       task: tasks.length,
@@ -1271,5 +1311,5 @@ export async function runLineupSolver(
       total,
     })
   );
-  report({ type: "result", result: snapshot(false) });
+  report({ type: "result", result: snapshot(state, false) });
 }

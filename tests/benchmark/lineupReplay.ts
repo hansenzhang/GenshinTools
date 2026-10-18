@@ -3,10 +3,11 @@
  *
  * Prints the exported run first: each encounter's chosen team with weapons,
  * sets, every piece and the members' final stats, then how the job got there
- * (compositions, screened sets and real-inventory runs). Unless `--no-run` is
- * given, it then runs the solver again on the exported inputs in Node and
- * prints the same view, so changes to the solver can be checked against the
- * user's own teams and account.
+ * (compositions, screened sets, real-inventory runs with where their time
+ * went, and the run in progress when a stopped job was saved). Unless
+ * `--no-run` is given, it then runs the solver again on the exported inputs
+ * in Node and prints the same view, so changes to the solver can be checked
+ * against the user's own teams and account, run times included.
  *
  * Usage:
  *   npx tsx --tsconfig tsconfig.app.json tests/benchmark/lineupReplay.ts \
@@ -35,6 +36,7 @@ import type {
   CalibratedCandidate,
   LineupDebugExport,
   LineupDebugPlan,
+  LineupRunTrace,
   LineupSolverRequest,
   LineupSolverResult,
 } from "@/domain/team/lineupSolverTypes";
@@ -122,7 +124,24 @@ function printCandidate(
   }
 }
 
-function printTrace(result: LineupSolverResult): void {
+const seconds = (ms: number) => `${(ms / 1000).toFixed(1)}s`;
+
+/** A run's time per optimizer step, and when each member's search ended. */
+function runTimeLabel(run: LineupRunTrace): string {
+  const spans = run.phases
+    .map(
+      (span) =>
+        `${span.phase}${span.round == null ? "" : `#${span.round}`} ${seconds(span.ms)}`
+    )
+    .join(" · ");
+  const searches = Object.entries(run.memberSearchMs)
+    .map(([charId, ms]) => `${charId} ${seconds(ms)}`)
+    .join(", ");
+  return `${spans}${searches ? ` | searches done: ${searches}` : ""}`;
+}
+
+/** `exportedAt` dates a stopped job's run in progress. */
+function printTrace(result: LineupSolverResult, exportedAt: Date | null): void {
   for (const task of result.trace.tasks) {
     console.log(
       `\n#### ${task.templateId} on ${task.encounterId}: recorded damage ${task.referenceDamage?.toFixed(0) ?? "unscored"}`
@@ -179,7 +198,19 @@ function printTrace(result: LineupSolverResult): void {
         `      asked  ${assignmentLabel(run.assignment, run.charIds)}`
       );
       console.log(`      formed ${assignmentLabel(run.realized, run.charIds)}`);
+      console.log(`      time   ${runTimeLabel(run)}`);
     }
+    const { inFlight } = result.trace;
+    if (
+      inFlight &&
+      inFlight.templateId === task.templateId &&
+      inFlight.encounterId === task.encounterId
+    )
+      console.log(
+        `  in progress when saved: ${inFlight.kind} (estimate ${share(inFlight.accountEstimate)}) for ${exportedAt ? seconds(exportedAt.getTime() - inFlight.startedAt) : "?"}` +
+          `${inFlight.excludedArtifactCount ? ` excl ${inFlight.excludedArtifactCount}` : ""}\n` +
+          `      asked  ${assignmentLabel(inFlight.assignment, inFlight.charIds)}`
+      );
   }
 }
 
@@ -243,7 +274,8 @@ function printRun(
   result: LineupSolverResult,
   calibrated: CalibratedCandidate[],
   debugPlan: LineupDebugPlan,
-  withTrace: boolean
+  withTrace: boolean,
+  exportedAt: Date | null
 ): void {
   console.log(`\n## ${title}`);
   if (debugPlan.mode === "stygian") {
@@ -279,7 +311,7 @@ function printRun(
     console.log(
       `issue: ${issue.templateId} ${issue.encounterId} ${issue.reason}`
     );
-  if (withTrace) printTrace(result);
+  if (withTrace) printTrace(result, exportedAt);
 }
 
 async function main(): Promise<void> {
@@ -292,7 +324,8 @@ async function main(): Promise<void> {
     exported.result,
     exported.calibrated,
     exported.plan,
-    args.trace === "true"
+    args.trace === "true",
+    new Date(exported.exportedAt)
   );
   if (args["no-run"] === "true") return;
 
@@ -320,7 +353,7 @@ async function main(): Promise<void> {
   });
   const finished = result as LineupSolverResult | null;
   if (!finished) return;
-  const seconds = ((performance.now() - start) / 1000).toFixed(1);
+  const took = seconds(performance.now() - start);
   const calibrated = calibrateCandidates(
     finished.candidates,
     request.calibrations,
@@ -328,12 +361,13 @@ async function main(): Promise<void> {
   );
   const replayed = await plan(request, finished, calibrated);
   printRun(
-    `Replay (${seconds} s, ${request.timeBudgetSec == null ? "until done" : `${request.timeBudgetSec} s per team`})`,
+    `Replay (${took}, ${request.timeBudgetSec == null ? "until done" : `${request.timeBudgetSec} s per team`})`,
     request,
     finished,
     calibrated,
     replayed,
-    true
+    true,
+    null
   );
   if (args.dump)
     writeFileSync(

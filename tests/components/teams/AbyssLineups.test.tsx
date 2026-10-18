@@ -155,7 +155,7 @@ describe("AbyssLineups", () => {
         diluc_weapon: 1,
       },
       setSlotCounts: {},
-      trace: { tasks: [], runs: [], memberStats: {} },
+      trace: { tasks: [], runs: [], inFlight: null, memberStats: {} },
       partial: false,
     });
     const view = render(<AbyssLineups />);
@@ -192,7 +192,7 @@ describe("AbyssLineups", () => {
       issues: [{ templateId: "tb", encounterId: "e2", reason: "no-candidate" }],
       weaponCopies: { favonius_sword: 1 },
       setSlotCounts: {},
-      trace: { tasks: [], runs: [], memberStats: {} },
+      trace: { tasks: [], runs: [], inFlight: null, memberStats: {} },
       partial: false,
     });
     render(<AbyssLineups />);

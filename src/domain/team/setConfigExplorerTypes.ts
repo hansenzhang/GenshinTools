@@ -13,7 +13,12 @@ import type {
   ArtifactInventoryReuseMode,
   ReservedArtifactTeam,
 } from "./artifactInventory";
-import type { OptFailReason, TeamComp, TeamSetupConfig } from "./types";
+import type {
+  OptFailReason,
+  OptPhase,
+  TeamComp,
+  TeamSetupConfig,
+} from "./types";
 
 /** Set goal per member, keyed by character id; `null` means no set goal. */
 export type SetAssignment = Record<string, ArtifactSetConfig | null>;
@@ -71,6 +76,31 @@ export interface SetRunDiagnostics {
   saturatedCharIds: string[];
   /** Substat weights each member's pieces were ranked with. */
   substatWeights: Record<string, Record<string, number>>;
+  /** Where the run's time went, in order. */
+  phases: OptRunSpan[];
+  /** Time from the run's start until each member's per-character search
+   *  finished. Only parallel searches report it. */
+  memberSearchMs: Record<string, number>;
+}
+
+/**
+ * Time from one optimizer step to the next. `init` is setup before the
+ * per-character search, `phase1` that search with its contested-piece
+ * re-runs, `phase2` team allocation, and each `phase3` span one refinement
+ * round (`round` from 1); the last also covers the final swaps and fills.
+ */
+export interface OptRunSpan {
+  phase: OptPhase;
+  round: number | null;
+  ms: number;
+}
+
+/** Where a running optimization is; `searching` lists members whose
+ *  per-character search is still running. */
+export interface OptRunPosition {
+  phase: OptPhase;
+  round: number | null;
+  searching: string[];
 }
 
 export interface SetAssignmentOutcome {

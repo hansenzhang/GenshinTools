@@ -31,11 +31,13 @@ import type {
   CalibratedCandidate,
   LineupDebugPlan,
   LineupIssueReason,
+  LineupRunProgress,
   LineupSolverRequest,
   LineupSolverTeam,
 } from "@/domain/team/lineupSolverTypes";
 import type { EncounterMode } from "@/domain/team/lineupTypes";
 import { teamCalculationInputs } from "@/domain/team/teamDeltas";
+import type { OptPhase } from "@/domain/team/types";
 import { useActiveAccountData } from "@/hooks/useActiveAccount";
 import {
   type LineupSolverProgress,
@@ -441,8 +443,32 @@ function useElapsed(startedAt: number | null, running: boolean): string {
   return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, "0")}`;
 }
 
+/** Where an optimization on owned artifacts is: its phase with the members
+ *  still searching, or its refinement round. */
+function runPositionLabel(run: LineupRunProgress, t: Translate): string {
+  const phases: Record<OptPhase, string> = {
+    init: t.ui("teamComp.phaseInit"),
+    phase1: t.ui("teamComp.phasePerChar"),
+    phase2: t.ui("teamComp.phaseTeamAlloc"),
+    phase3: t.ui("teamComp.phaseTeamRefine"),
+  };
+  const phase = phases[run.phase];
+  if (run.searching.length > 0)
+    return t.format(
+      "lineup.runSearching",
+      phase,
+      run.searching
+        .map((charId) => t.character(charId))
+        .join(t.ui("common.listJoiner"))
+    );
+  return run.round != null
+    ? t.format("lineup.runRound", phase, run.round)
+    : phase;
+}
+
 /** Settings row, Run/Stop, a hint when it cannot run, progress and errors.
- *  A finished run can be saved with `debugPlan` for troubleshooting. */
+ *  A finished or stopped run can be saved with `debugPlan` for
+ *  troubleshooting. */
 export function LineupRunControls({
   job,
   settings,
@@ -458,6 +484,8 @@ export function LineupRunControls({
   const { solver } = job;
   const { progress } = solver;
   const elapsed = useElapsed(solver.startedAt, solver.isComputing);
+  const run = progress?.run;
+  const runElapsed = useElapsed(run?.startedAt ?? null, solver.isComputing);
   const stageLabels: Record<LineupSolverProgress["stage"], string> = {
     screen: t.ui("teamComp.teamSetsStageScreen"),
     optimize: t.ui("teamComp.teamSetsStageOptimize"),
@@ -518,6 +546,8 @@ export function LineupRunControls({
                 ? `${stageLabels.diversify} ${progress.done}/${progress.total}`
                 : `${t.format("lineup.progressTeam", progress.task + 1, progress.tasks)} · ${stageLabels[progress.stage]} ${progress.done}/${progress.total}`
               : t.ui("teamComp.weaponChoiceRunning")}
+            {run &&
+              ` · ${runPositionLabel(run, t)} · ${t.format("lineup.runTime", runElapsed)}`}
             {` · ${elapsed}`}
           </p>
         </div>

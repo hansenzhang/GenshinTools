@@ -277,6 +277,47 @@ describe("runLineupSolver", () => {
     expect(best.margin).toBeCloseTo((best.ratio * 110) / 90, 10);
   });
 
+  it("sends the trace after every run, with the run in progress", async () => {
+    const messages = await run(
+      request({ teams: [teamA], calibrations: [calibrate(teamA, "first")] })
+    );
+    const { trace } = finalResult(messages);
+    expect(trace.runs.length).toBeGreaterThan(0);
+    expect(trace.inFlight).toBeNull();
+    const partials = messages.flatMap((message) =>
+      message.type === "partial" ? [message.result.trace] : []
+    );
+    for (const [index, entry] of trace.runs.entries()) {
+      // Announced before it starts, listed once it ends.
+      const announced = partials.find(
+        (partial) =>
+          partial.runs.length === index &&
+          partial.inFlight?.startedAt === entry.startedAt
+      );
+      expect(announced?.inFlight?.assignment).toEqual(entry.assignment);
+      expect(
+        partials.some(
+          (partial) =>
+            partial.runs.length === index + 1 && partial.inFlight === null
+        )
+      ).toBe(true);
+      expect(entry.phases[0]?.phase).toBe("init");
+      expect(
+        entry.phases.reduce((sum, span) => sum + span.ms, 0)
+      ).toBeLessThanOrEqual(entry.elapsedMs);
+    }
+    const positions = messages.flatMap((message) =>
+      message.type === "progress" && message.run ? [message] : []
+    );
+    expect(positions.map((message) => message.run?.phase)).toEqual(
+      expect.arrayContaining(["phase1", "phase2"])
+    );
+    for (const message of positions)
+      expect(
+        trace.runs.some((entry) => entry.startedAt === message.run?.startedAt)
+      ).toBe(true);
+  }, 60_000);
+
   it("keeps members whose pieces matter to the kept pieces", async () => {
     // No piece is kept, so only the recorded build's pieces remain usable.
     const input = request({

@@ -90,4 +90,4 @@ export const LINEUP_DEFAULT_TIME_BUDGET_SEC = 120;
 
 /** Format tag and version of a lineup run's debug export. */
 export const LINEUP_DEBUG_FORMAT = "genshintools-lineup-debug";
-export const LINEUP_DEBUG_VERSION = 1;
+export const LINEUP_DEBUG_VERSION = 2;

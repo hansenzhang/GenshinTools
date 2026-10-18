@@ -223,6 +223,7 @@ export const i18nUiData = {
     },
   },
   common: {
+    listJoiner: { en: ", ", zh: "、" },
     search: { en: "Search...", zh: "搜索..." },
     clear: { en: "Clear", zh: "清除" },
     clearAccountData: { en: "Clear Account Data", zh: "清除账号数据" },
@@ -538,7 +539,6 @@ export const i18nUiData = {
         en: "The cloud copy was written by a newer app version.",
         zh: "云端副本来自较新的应用版本。",
       },
-      categoryJoiner: { en: ", ", zh: "、" },
     },
     status: {
       checking: { en: "Checking", zh: "检查中" },
@@ -2324,6 +2324,9 @@ export const i18nUiData = {
       en: "Freeing shared artifacts and weapons",
       zh: "错开共用的圣遗物和武器",
     },
+    runSearching: { en: "{0}: {1}", zh: "{0}：{1}" },
+    runRound: { en: "{0} (round {1})", zh: "{0}（第 {1} 轮）" },
+    runTime: { en: "this optimization {0}", zh: "本次优化 {0}" },
     abyssChamber: { en: "Abyss 12-{0}", zh: "深渊 12-{0}" },
     firstHalf: { en: "First half", zh: "上半" },
     secondHalf: { en: "Second half", zh: "下半" },

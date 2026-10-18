@@ -42,7 +42,7 @@ function result(count: number, partial = false): LineupSolverResult {
     issues: [],
     weaponCopies: {},
     setSlotCounts: {},
-    trace: { tasks: [], runs: [], memberStats: {} },
+    trace: { tasks: [], runs: [], inFlight: null, memberStats: {} },
     partial,
   };
 }
@@ -116,6 +116,18 @@ describe("useLineupSolver", () => {
     act(() => view.result.current.stop());
     expect(workers[1].terminate).toHaveBeenCalled();
     expect(view.result.current.isComputing).toBe(false);
+  });
+
+  it("keeps the latest partial results when stopped", () => {
+    const signature = nextSignature();
+    const view = renderHook(() => useLineupSolver("abyss", signature));
+    act(() => view.result.current.start(request));
+    act(() => workers[0].emit({ type: "partial", result: result(2, true) }));
+    act(() => view.result.current.stop());
+    expect(view.result.current.isComputing).toBe(false);
+    expect(view.result.current.progress).toBeNull();
+    expect(view.result.current.result?.partial).toBe(true);
+    expect(view.result.current.result?.candidates).toHaveLength(2);
   });
 
   it("runs each mode as its own job", () => {

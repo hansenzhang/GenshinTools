@@ -6,6 +6,7 @@ import type { ArtifactData } from "@/domain/models";
 import { createTeamTemplate } from "@/domain/team/lineup";
 import type {
   LineupCandidate,
+  LineupRunStart,
   StygianPlanRequest,
   StygianPlanResult,
 } from "@/domain/team/lineupSolverTypes";
@@ -109,9 +110,43 @@ const RESULT = {
   issues: [],
   weaponCopies: {},
   setSlotCounts: {},
-  trace: { tasks: [], runs: [], memberStats: {} },
+  trace: { tasks: [], runs: [], inFlight: null, memberStats: {} },
   partial: false,
 };
+
+/** Exports the shown run as a debug file and reads it back. */
+async function exportDebugFile() {
+  const user = userEvent.setup();
+  useAccountStore.setState({
+    activeAccountId: 1,
+    accounts: {
+      1: {
+        id: 1,
+        name: "Test",
+        data: { characters: [], extraArtifacts: [], extraWeapons: [] },
+        lastUpdate: 0,
+      },
+    },
+  });
+  const blobs: Blob[] = [];
+  vi.stubGlobal("URL", {
+    ...URL,
+    createObjectURL: (blob: Blob) => {
+      blobs.push(blob);
+      return "blob:debug";
+    },
+    revokeObjectURL: () => {},
+  });
+  const click = vi
+    .spyOn(HTMLAnchorElement.prototype, "click")
+    .mockImplementation(() => {});
+  render(<StygianLineup />);
+  await user.click(screen.getByRole("button", { name: "Export debug file" }));
+  expect(click).toHaveBeenCalledOnce();
+  click.mockRestore();
+  vi.unstubAllGlobals();
+  return JSON.parse(await blobs[0].text());
+}
 
 beforeEach(() => {
   localStorage.clear();
@@ -184,20 +219,86 @@ describe("StygianLineup", () => {
     expect(screen.queryByText("Hardest to lose")).not.toBeInTheDocument();
   });
 
-  it("saves the run with its inputs as a debug file", async () => {
-    const user = userEvent.setup();
+  it("shows where an optimization on owned artifacts is", () => {
     seed();
-    useAccountStore.setState({
-      activeAccountId: 1,
-      accounts: {
-        1: {
-          id: 1,
-          name: "Test",
-          data: { characters: [], extraArtifacts: [], extraWeapons: [] },
-          lastUpdate: 0,
+    const now = Date.now();
+    const progress = {
+      type: "progress" as const,
+      stage: "optimize" as const,
+      task: 0,
+      tasks: 3,
+      done: 22,
+      total: 24,
+    };
+    mocks.solver = {
+      ...mocks.solver!,
+      result: null,
+      isComputing: true,
+      startedAt: now - 65_000,
+      progress: {
+        ...progress,
+        run: {
+          startedAt: now - 12_000,
+          phase: "phase1",
+          round: null,
+          searching: ["hu_tao", "diluc"],
         },
       },
-    });
+    };
+    const view = render(<StygianLineup />);
+    expect(
+      screen.getByText(
+        /^Team 1\/3 · Optimizing owned artifacts 22\/24 · Per-character search: Hu Tao, Diluc · this optimization 0:1\d · 1:0\d$/
+      )
+    ).toBeInTheDocument();
+
+    mocks.solver = {
+      ...mocks.solver,
+      progress: {
+        ...progress,
+        run: {
+          startedAt: now,
+          phase: "phase3",
+          round: 2,
+          searching: [],
+        },
+      },
+    };
+    view.rerender(<StygianLineup />);
+    expect(
+      screen.getByText(/· Team refinement \(round 2\) · this optimization/)
+    ).toBeInTheDocument();
+  });
+
+  it("saves a stopped run with the optimization it was on", async () => {
+    seed();
+    const inFlight: LineupRunStart = {
+      kind: "search",
+      templateId: "t1",
+      encounterId: "b2",
+      charIds: ["diluc"],
+      assignment: { diluc: null },
+      generatedDamage: null,
+      accountEstimate: 0.7,
+      excludedArtifactCount: 0,
+      runMs: null,
+      startedAt: 1,
+    };
+    mocks.solver = {
+      ...mocks.solver!,
+      result: {
+        ...RESULT,
+        partial: true,
+        trace: { ...RESULT.trace, inFlight },
+      },
+    };
+    const data = await exportDebugFile();
+    expect(data.result.partial).toBe(true);
+    expect(data.result.trace.inFlight).toEqual(inFlight);
+  });
+
+  it("saves the run with its inputs as a debug file", async () => {
+    seed();
     const plan: StygianPlanResult = {
       plans: [
         {
@@ -210,29 +311,12 @@ describe("StygianLineup", () => {
       binding: [],
     };
     mocks.plan = { result: plan, error: null, isSolving: false };
-    const blobs: Blob[] = [];
-    vi.stubGlobal("URL", {
-      ...URL,
-      createObjectURL: (blob: Blob) => {
-        blobs.push(blob);
-        return "blob:debug";
-      },
-      revokeObjectURL: () => {},
-    });
-    const click = vi
-      .spyOn(HTMLAnchorElement.prototype, "click")
-      .mockImplementation(() => {});
-    render(<StygianLineup />);
-    await user.click(screen.getByRole("button", { name: "Export debug file" }));
-    expect(click).toHaveBeenCalledOnce();
-    const data = JSON.parse(await blobs[0].text());
+    const data = await exportDebugFile();
     expect(data.format).toBe("genshintools-lineup-debug");
     expect(data.request.mode).toBe("stygian");
     expect(data.request.encounters).toHaveLength(3);
     expect(data.result.candidates).toHaveLength(4);
     expect(data.calibrated[0].margin).toBeCloseTo((1.2 * 110) / 90, 10);
     expect(data.plan).toEqual({ mode: "stygian", result: plan });
-    click.mockRestore();
-    vi.unstubAllGlobals();
   });
 });

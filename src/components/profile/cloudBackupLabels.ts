@@ -74,7 +74,7 @@ export function categoryList(
 ): string {
   return kinds
     .map((kind) => metadataRowLabel(kind, t))
-    .join(t.ui("accountSystem.manualChoice.categoryJoiner"));
+    .join(t.ui("common.listJoiner"));
 }
 
 export function metadataGroupLabel(

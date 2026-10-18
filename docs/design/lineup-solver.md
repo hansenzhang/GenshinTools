@@ -407,3 +407,36 @@ Changes:
   is then measured against a team that is never fielded), and a note that joining alternatives
   use their default rotation.
 
+
+## P3 run cost (2026-10-20)
+
+A Stygian run with Kept artifacts only and Until done showed "Team 1/3 · Optimizing owned
+artifacts 22/24" after 954 min. The timer is wall clock, and the Mac was awake for 1–2 h of
+that, so a run took ~3–5 min in the browser (dev server).
+
+Measured in Node on the own account with the user's three teams (627 locked plus recorded
+pieces):
+
+| Step, no deadline | Pool | Time |
+|---|---|---|
+| One member's search at its set goal (4pc, or Yae's 2+2 with ≤4,680 set patterns) | ~630 | 0.0–0.3 s |
+| One member's search with no set | ~630 | 0.7–7 s |
+| An any-pieces member (Diona), 2+2 / no set | 2,089 | 0.2–1.2 s / 24 s |
+| Whole `runTeamOptimization`, every phase | ~630 | 8.8–14.9 s |
+
+- **The pool is not the bottleneck.** An exact dominance filter (drop a piece with ≥4 dominators
+  in its slot, set and main stat on the member's stats) keeps 616–625 of 633 pieces: low-level
+  pieces rarely dominate each other.
+- **The browser takes 15–30× longer than Node.** The suspect is worker start-up on the dev
+  server: each run starts 4 module workers for Phase 1 and 4 more per Phase 3 round. Not
+  confirmed yet.
+
+To confirm it, runs are now observable:
+- The progress line shows the optimizer phase, the members still searching (Phase 1) or the
+  refinement round (Phase 3), and the optimization's own time.
+- Every run's trace records its spans (`init`, `phase1` with contested-piece re-runs, `phase2`,
+  one `phase3` span per round) and when each member's parallel search ended.
+- A partial result with the trace goes out before and after every run. A stopped job can
+  therefore be exported; `trace.inFlight` names the run it was on. Debug export version 2.
+- `tests/benchmark/lineupReplay.ts --trace` prints the spans and the run in progress. With
+  `--budget-sec 0` it times the same runs in Node.

@@ -11,7 +11,11 @@ import type {
   EncounterMode,
   TeamTemplate,
 } from "./lineupTypes";
-import type { SetAssignment } from "./setConfigExplorerTypes";
+import type {
+  OptRunPosition,
+  OptRunSpan,
+  SetAssignment,
+} from "./setConfigExplorerTypes";
 import type { OptFailReason, TeamComp, TeamSetupConfig } from "./types";
 
 // ─── Candidates ───
@@ -203,8 +207,8 @@ export interface LineupIssue {
  *  candidate uses. */
 export type LineupRunKind = "recorded-sets" | "search" | "pieces-excluded";
 
-/** One real-inventory optimization, as the debug export reports it. */
-export interface LineupRunTrace {
+/** A real-inventory optimization as it starts. */
+export interface LineupRunStart {
   kind: LineupRunKind;
   templateId: string;
   encounterId: string;
@@ -218,7 +222,18 @@ export interface LineupRunTrace {
   excludedArtifactCount: number;
   /** Time the run was given; null when it ran until done. */
   runMs: number | null;
+  /** When it started (epoch ms). */
+  startedAt: number;
+}
+
+/** One real-inventory optimization, as the debug export reports it. */
+export interface LineupRunTrace extends LineupRunStart {
   elapsedMs: number;
+  /** Where the time went, in order. */
+  phases: OptRunSpan[];
+  /** Time until each member's per-character search finished, when the
+   *  searches ran in parallel. */
+  memberSearchMs: Record<string, number>;
   /** Damage of the pieces found, with the sets they form; null if unreachable. */
   damage: number | null;
   realized: SetAssignment;
@@ -265,6 +280,8 @@ export type LineupMemberStats = Record<string, number>;
 export interface LineupSolverTrace {
   tasks: LineupTaskTrace[];
   runs: LineupRunTrace[];
+  /** The run in progress, so a stopped job shows where it was. */
+  inFlight: LineupRunStart | null;
   /** Stats per candidate id, then per member. */
   memberStats: Record<string, Record<string, LineupMemberStats>>;
 }
@@ -304,6 +321,12 @@ export interface LineupDebugExport {
 
 export type LineupSolverStage = "screen" | "optimize" | "diversify";
 
+/** Where the real-inventory run in progress is, and when it started
+ *  (epoch ms). */
+export interface LineupRunProgress extends OptRunPosition {
+  startedAt: number;
+}
+
 export type LineupSolverFailure = "no-calibrations" | "calculator-error";
 
 export type LineupSolverMessage =
@@ -315,6 +338,8 @@ export type LineupSolverMessage =
       tasks: number;
       done: number;
       total: number;
+      /** Set while a real-inventory run is in progress. */
+      run?: LineupRunProgress;
     }
   | { type: "partial"; result: LineupSolverResult }
   | { type: "result"; result: LineupSolverResult }
