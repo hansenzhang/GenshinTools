@@ -141,6 +141,36 @@ export function resolveActiveCombo(
   };
 }
 
+/**
+ * Default rotation lines of a member who joins in place of removed members.
+ * The lines take a removed member's reaction when the joiner can trigger it.
+ */
+export function joiningMemberLines(
+  team: TeamBuild,
+  charId: string,
+  removedLines: readonly ComboLine[]
+): ComboLine[] {
+  const sharedReaction = removedLines.find((line) => line.reaction?.reaction)
+    ?.reaction?.reaction;
+  const reaction =
+    sharedReaction && team.teamMeta.hasReaction(sharedReaction, charId)
+      ? sharedReaction
+      : undefined;
+  return Object.entries(team.catalog.getCombo(charId)).flatMap(
+    ([formulaId, count]) =>
+      count > 0 && team.catalog.formulaIndex.has(formulaId)
+        ? [
+            {
+              charId,
+              formulaId,
+              count,
+              reaction: reaction ? { reaction } : undefined,
+            },
+          ]
+        : []
+  );
+}
+
 /** Return a new combo with a line's count updated, pruning when ≤ 0 or adding when new. */
 export function withLineCount(
   combo: ComboFormula,

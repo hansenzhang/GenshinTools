@@ -1,5 +1,6 @@
 import { buildSheetFromMainAndSubs } from "@/domain/build/artifact/scoring/sheetBuilder";
 import { getRollValues } from "@/domain/build/artifact/scoring/utils";
+import { joiningMemberLines } from "@/domain/combat/damage/core/combo";
 import { StatSheet } from "@/domain/combat/damage/core/statSheet";
 import { TeamBuild } from "@/domain/combat/damage/core/teamBuild";
 import type {
@@ -86,23 +87,13 @@ export function buildReplacementCombo(
     team.configs,
     slotIndexes
   );
+  const removedLines = request.objective.lines.filter((line) =>
+    removed.has(line.charId)
+  );
   for (const config of team.configs) {
     if (unchanged.has(config.charId)) continue;
     if (ignored.includes(config.charId)) continue;
-    for (const [formulaId, count] of Object.entries(
-      team.catalog.getCombo(config.charId)
-    )) {
-      if (count <= 0 || !team.catalog.formulaIndex.has(formulaId)) continue;
-      const sharedReaction = request.objective.lines.find(
-        (line) => removed.has(line.charId) && line.reaction?.reaction
-      )?.reaction?.reaction;
-      const reaction =
-        sharedReaction &&
-        team.teamMeta.hasReaction(sharedReaction, config.charId)
-          ? { reaction: sharedReaction }
-          : undefined;
-      lines.push({ charId: config.charId, formulaId, count, reaction });
-    }
+    lines.push(...joiningMemberLines(team, config.charId, removedLines));
   }
   return { ...request.objective, lines, buffOverrides };
 }

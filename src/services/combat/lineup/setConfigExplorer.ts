@@ -10,7 +10,10 @@ import { TIER_LIST_SUPPORT_ARTIFACT_SETS } from "@/config/gameConstants";
 import { buildBuffOverrides } from "@/domain/combat/damage/core/comboBuffOverrides";
 import { StatSheet } from "@/domain/combat/damage/core/statSheet";
 import { TeamBuild } from "@/domain/combat/damage/core/teamBuild";
-import type { ComboFormula } from "@/domain/combat/damage/types";
+import type {
+  ComboFormula,
+  TeamSlotConfig,
+} from "@/domain/combat/damage/types";
 import {
   SET_ACCOUNT_TIE_PERCENT,
   SET_GENERATED_TIE_PERCENT,
@@ -42,6 +45,7 @@ import type {
   SetAccountOutcome,
   SetAssignment,
   SetAssignmentOutcome,
+  SetConfigExplorerFailure,
   SetConfigExplorerMessage,
   SetConfigExplorerRequest,
   SetConfigExplorerResult,
@@ -152,7 +156,7 @@ function findUnmetMembers(
 }
 
 /** Score a complete set of real pieces with the sets they actually form. */
-function scorePieces(
+export function scorePieces(
   screen: SetScreenInput,
   artifactsByChar: ArtifactsByChar,
   failReasons: Record<string, OptFailReason>
@@ -218,24 +222,45 @@ function buildResult(
   };
 }
 
-export async function runSetConfigExplorer(
+type TeamInventoryView = ReturnType<typeof computeTeamInventory>;
+
+/** One team's set exploration, prepared once and reused for every assignment. */
+export interface TeamSetsJob {
+  request: SetConfigExplorerRequest;
+  configs: TeamSlotConfig[];
+  charIds: string[];
+  /** The members' set goals. */
+  current: SetAssignment;
+  /** Active objective lines; buff defaults are rebuilt per assignment. */
+  combo: ComboFormula;
+  screen: SetScreenInput;
+  /** Inventory for the current goals; null without account artifacts. */
+  baseInventory: TeamInventoryView | null;
+  inventoryFor: (assignment: SetAssignment) => TeamInventoryView;
+}
+
+export type TeamSetsJobSetup =
+  | { kind: "ready"; job: TeamSetsJob }
+  | { kind: "failed"; reason: SetConfigExplorerFailure };
+
+/** Resolve members, objective, inventory and screening input for a request. */
+export function prepareTeamSetsJob(
   request: SetConfigExplorerRequest,
-  chars: CharacterStatsMap,
-  report: Report
-): Promise<void> {
-  const fail = (
-    reason: Extract<SetConfigExplorerMessage, { type: "error" }>["reason"],
-    details?: string
-  ) => report({ type: "error", reason, details });
+  chars: CharacterStatsMap
+): TeamSetsJobSetup {
+  const failed = (reason: SetConfigExplorerFailure): TeamSetsJobSetup => ({
+    kind: "failed",
+    reason,
+  });
   const { settings } = request;
   if (settings.useAccountArtifacts && !request.accountData)
-    return fail("no-account");
+    return failed("no-account");
   const configs = buildTeamSlotConfigs(
     request.teamComp,
     request.setupConfig,
     request.accountData
   );
-  if (configs.length === 0) return fail("no-members");
+  if (configs.length === 0) return failed("no-members");
   const charIds = configs.map((config) => config.charId);
   const current: SetAssignment = Object.fromEntries(
     configs.map((config) => [config.charId, config.artifactSet ?? null])
@@ -256,7 +281,7 @@ export async function runSetConfigExplorer(
     ),
     buffOverrides: undefined,
   };
-  if (combo.lines.length === 0) return fail("no-objective");
+  if (combo.lines.length === 0) return failed("no-objective");
 
   const allArtifacts = collectAccountArtifacts(request);
   const reservations = request.inventoryReservations;
@@ -325,6 +350,144 @@ export async function runSetConfigExplorer(
         }
       : {}),
   };
+  return {
+    kind: "ready",
+    job: {
+      request,
+      configs,
+      charIds,
+      current,
+      combo,
+      screen,
+      baseInventory,
+      inventoryFor,
+    },
+  };
+}
+
+/**
+ * Optimize one set assignment on the account's pieces and score what the
+ * optimizer finds with the sets those pieces form. `excludedIds` keeps
+ * pieces out of every member's pool.
+ */
+export async function optimizeAssignmentOnAccount(
+  job: TeamSetsJob,
+  assignment: SetAssignment,
+  runMs: number,
+  excludedIds: ReadonlySet<string> = new Set()
+): Promise<SetAccountOutcome> {
+  const { request, configs, charIds, combo, screen } = job;
+  const account = request.accountData;
+  if (!account) throw new Error("Account optimization needs account data.");
+  const inventory = job.inventoryFor(assignment);
+  const forcedNow = Object.fromEntries(
+    Object.entries(inventory.forceReuseChars).filter(([charId]) =>
+      charIds.includes(charId)
+    )
+  );
+  const forcedIds = new Set(
+    Object.values(forcedNow).flatMap((slots) =>
+      Object.values(slots).flatMap((artifact) =>
+        artifact ? [artifact.id] : []
+      )
+    )
+  );
+  const usable = (artifact: ArtifactData) =>
+    !forcedIds.has(artifact.id) && !excludedIds.has(artifact.id);
+  const runConfigs = configs.map((config) => ({
+    ...config,
+    artifactSet: assignment[config.charId] ?? null,
+  }));
+  const team = new TeamBuild(
+    runConfigs,
+    screen.combatOptions,
+    screen.enemyAura,
+    screen.extraBuffs,
+    undefined,
+    request.optimizeContext
+  );
+  const baseSheets: Record<string, StatSheet> = {};
+  for (const charId of charIds) {
+    const owned = account.characters.find((char) => char.key === charId);
+    baseSheets[charId] = StatSheet.fromArtifacts(
+      Object.values(owned?.artifacts ?? {}).filter(
+        (artifact): artifact is ArtifactData => !!artifact
+      )
+    );
+  }
+  Object.assign(baseSheets, sheetsFromPieces(forcedNow));
+  const perChar: Record<string, CharOptConfig> = {};
+  for (const config of runConfigs) {
+    if (forcedNow[config.charId]) continue;
+    perChar[config.charId] = {
+      ...screen.requirements[config.charId],
+      artifactSet: config.artifactSet,
+    };
+  }
+  let found: ArtifactsByChar | null = null;
+  let failReasons: Record<string, OptFailReason> = {};
+  try {
+    for await (const update of runTeamOptimization({
+      teamBuild: team,
+      carryCharId: screen.carryCharId,
+      combo: {
+        ...combo,
+        buffOverrides: buildBuffOverrides(
+          combo.lines,
+          team,
+          baseSheets,
+          request.displayContext,
+          request.userBuffOverrides
+        ),
+      },
+      inventory: inventory.availableArtifacts.filter(usable),
+      calcContext: request.optimizeContext,
+      baseSheets,
+      perChar,
+      teamDeadlineMs: performance.now() + runMs,
+      perCharExtraArtifacts: Object.fromEntries(
+        Object.entries(inventory.perCharExtraArtifacts).map(
+          ([charId, artifacts]) => [
+            charId,
+            forcedNow[charId] ? [] : artifacts.filter(usable),
+          ]
+        )
+      ),
+      perCharExcludedArtifactIds: request.perCharExcludedArtifactIds,
+    })) {
+      if (!update.done) continue;
+      found = { ...update.bestArtifactsByChar, ...forcedNow };
+      failReasons = update.failReasons;
+    }
+  } catch (error) {
+    failReasons = Object.fromEntries(
+      Object.keys(perChar).map((charId) => [
+        charId,
+        {
+          kind: "worker-error",
+          message: error instanceof Error ? error.message : String(error),
+        },
+      ])
+    );
+  }
+  return scorePieces(screen, found ?? {}, failReasons);
+}
+
+export async function runSetConfigExplorer(
+  request: SetConfigExplorerRequest,
+  chars: CharacterStatsMap,
+  report: Report
+): Promise<void> {
+  const fail = (
+    reason: Extract<SetConfigExplorerMessage, { type: "error" }>["reason"],
+    details?: string
+  ) => report({ type: "error", reason, details });
+  const setup = prepareTeamSetsJob(request, chars);
+  if (setup.kind === "failed") return fail(setup.reason);
+  const { job } = setup;
+  const { settings } = request;
+  const { charIds, current, screen } = job;
+  const useAccount = settings.useAccountArtifacts;
 
   const output = await runSetConfigScreen(screen, (stage, done, total) =>
     report({ type: "progress", stage, done, total })
@@ -370,106 +533,16 @@ export async function runSetConfigExplorer(
   });
   const runs = [currentIndex, ...finalists];
   const runMs = budgetMs / runs.length;
-  const account = request.accountData!;
 
   for (const [done, index] of runs.entries()) {
     report({ type: "progress", stage: "optimize", done, total: runs.length });
     const outcome = outcomes[index];
-    const inventory = inventoryFor(outcome.assignment);
-    const forcedNow = Object.fromEntries(
-      Object.entries(inventory.forceReuseChars).filter(([charId]) =>
-        charIds.includes(charId)
-      )
+    outcome.account = await optimizeAssignmentOnAccount(
+      job,
+      outcome.assignment,
+      runMs
     );
-    const forcedIds = new Set(
-      Object.values(forcedNow).flatMap((slots) =>
-        Object.values(slots).flatMap((artifact) =>
-          artifact ? [artifact.id] : []
-        )
-      )
-    );
-    const runConfigs = configs.map((config) => ({
-      ...config,
-      artifactSet: outcome.assignment[config.charId] ?? null,
-    }));
-    const team = new TeamBuild(
-      runConfigs,
-      screen.combatOptions,
-      screen.enemyAura,
-      screen.extraBuffs,
-      undefined,
-      request.optimizeContext
-    );
-    const baseSheets: Record<string, StatSheet> = {};
-    for (const charId of charIds) {
-      const owned = account.characters.find((char) => char.key === charId);
-      baseSheets[charId] = StatSheet.fromArtifacts(
-        Object.values(owned?.artifacts ?? {}).filter(
-          (artifact): artifact is ArtifactData => !!artifact
-        )
-      );
-    }
-    Object.assign(baseSheets, sheetsFromPieces(forcedNow));
-    const perChar: Record<string, CharOptConfig> = {};
-    for (const config of runConfigs) {
-      if (forcedNow[config.charId]) continue;
-      perChar[config.charId] = {
-        ...screen.requirements[config.charId],
-        artifactSet: config.artifactSet,
-      };
-    }
-    let found: ArtifactsByChar | null = null;
-    let failReasons: Record<string, OptFailReason> = {};
-    try {
-      for await (const update of runTeamOptimization({
-        teamBuild: team,
-        carryCharId: screen.carryCharId,
-        combo: {
-          ...combo,
-          buffOverrides: buildBuffOverrides(
-            combo.lines,
-            team,
-            baseSheets,
-            request.displayContext,
-            request.userBuffOverrides
-          ),
-        },
-        inventory: inventory.availableArtifacts.filter(
-          (artifact) => !forcedIds.has(artifact.id)
-        ),
-        calcContext: request.optimizeContext,
-        baseSheets,
-        perChar,
-        teamDeadlineMs: performance.now() + runMs,
-        perCharExtraArtifacts: Object.fromEntries(
-          Object.entries(inventory.perCharExtraArtifacts).map(
-            ([charId, artifacts]) => [
-              charId,
-              forcedNow[charId]
-                ? []
-                : artifacts.filter((artifact) => !forcedIds.has(artifact.id)),
-            ]
-          )
-        ),
-        perCharExcludedArtifactIds: request.perCharExcludedArtifactIds,
-      })) {
-        if (!update.done) continue;
-        found = { ...update.bestArtifactsByChar, ...forcedNow };
-        failReasons = update.failReasons;
-      }
-    } catch (error) {
-      failReasons = Object.fromEntries(
-        Object.keys(perChar).map((charId) => [
-          charId,
-          {
-            kind: "worker-error",
-            message: error instanceof Error ? error.message : String(error),
-          },
-        ])
-      );
-    }
     evaluated++;
-    outcome.account = scorePieces(screen, found ?? {}, failReasons);
     if (outcome.account.damage == null) skipped++;
     report({
       type: "partial",
@@ -499,7 +572,12 @@ export async function runSetConfigExplorer(
         outcomes,
         charIds,
         currentIndex,
-        equippedDamage: scoreEquipped(screen, request, baseInventory, charIds),
+        equippedDamage: scoreEquipped(
+          screen,
+          request,
+          job.baseInventory,
+          charIds
+        ),
         tiePercent: SET_ACCOUNT_TIE_PERCENT,
         evaluated,
         skipped,
@@ -515,7 +593,7 @@ export async function runSetConfigExplorer(
 function scoreEquipped(
   screen: SetScreenInput,
   request: SetConfigExplorerRequest,
-  inventory: ReturnType<typeof computeTeamInventory> | null,
+  inventory: TeamInventoryView | null,
   charIds: readonly string[]
 ): number | null {
   if (!inventory) return null;
