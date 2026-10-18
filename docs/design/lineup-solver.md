@@ -1,8 +1,8 @@
 # Lineup solver
 
 Status: decisions and design, 2026-10-16. P1 is implemented as Build comparison › Team sets,
-P0 as Team Comp › Lineups (2026-10-18), and P2 as Lineups › Abyss lineups (2026-10-19).
-P3–P6 are not.
+P0 as Team Comp › Lineups (2026-10-18), P2 as Lineups › Abyss lineups and P3 as Lineups ›
+Stygian lineup (2026-10-19). P4–P6 are not.
 Source: the feasibility study in `~/mistilteinn/reference/notes/team-solver-study.md`, which
 compares this repo with Genshin Optimizer (GO) and gcsim, and the decisions made with the user
 after it.
@@ -289,3 +289,68 @@ Alyosha or Bennett) the second, both recorded at their equipped builds.
   to end.
 - Real-inventory runs overshoot their per-run time on the inline path, as in P1. Runs and the
   re-run set screens dominate; the composition screen does not.
+
+## P3 as built (2026-10-19)
+
+- **Solver**: `highs` 1.15.3, pinned (1.15.4 was three days old). `stygianPlan.worker.ts`
+  loads it once per session and solves whenever candidates or clears change. The loader finds
+  `highs.wasm` beside itself: Vite serves it from `node_modules` in development and emits it as
+  an asset in the build. A `highs/runtime?url` import was avoided, because dependency-cruiser
+  cannot resolve a query on a package export. `highsSolver.ts` writes the plain-data
+  `MilpModel` (`domain/combat/lineup/milpModel.ts`) in CPLEX LP format and maps the result.
+  Tests load the Wasm bytes from disk (`tests/helpers/highs.ts`), since jsdom looks like a
+  browser to the loader.
+- **Run model** (`domain/combat/lineup/stygianPlan.ts`): a binary `x_c` per candidate, exactly
+  one per boss. Characters and pieces used on two or more bosses get `Σ x ≤ 1`, and weapons get
+  `Σ uses_c · x_c ≤ copies` when the possible demand exceeds the copies. Bosses without a
+  candidate are left out and reported.
+- **Leximin**: for k = 1…bosses, maximize the sum of the k smallest margins. That sum is
+  `max_t k·t − Σ_b max(0, t − y_b)`, with one free `t` and `d_b ≥ t − y_b`. Each level is held
+  at its optimum minus the 3% tie, but level 1 never drops a clearing lineup below 1. The
+  Abyss tie rule follows the same never-below-1 rule (`marginsTied`).
+- **Elastic shortfall**: when the weakest margin is below 1, a second plan minimizes `Σ s_b`
+  with `s_b + y_b ≥ 1`, and ties go to total margin (weight 1e-3). It is listed only when it
+  differs from the leximin plan.
+- **Binding items** (Explain): gear of the plan that a candidate for another boss also uses,
+  checked in the order characters, then weapons, then pieces, up to 16 items. Each is removed
+  (a weapon loses one copy) and the max-min is solved again. Items whose loss lowers the max-min
+  are reported, worst first. Abyss chambers report the same for their best pairing, using the
+  best pairing margin left.
+  - This only re-solves over the candidates found. Gear that every found build of a team uses
+    shows as "No alternative" even when other pieces could replace it. On real accounts that
+    is most of a carry's pieces.
+- **Candidates for Stygian**: the job takes a `mode`. A Stygian run is one group for
+  diversification. Besides pairwise fixes, it builds two boss-by-boss lineups, weakest and
+  strongest first. Each pick is the strongest candidate that shares no character with earlier
+  picks and, when it can, leaves alone characters every candidate of a later boss needs. Each
+  pick is kept clear of the earlier picks' pieces (re-screened and re-run) and weapon copies
+  (swapped). At least one full lineup then fits. Identical builds and repeated re-runs are
+  reused.
+- **UI**: Lineups › Stygian lineup has Time per team and Find lineups. It shows the best
+  lineup's weakest boss, and per boss the team, margin, "Needs +X% damage" below the bar, and
+  gear. It also shows Hardest to lose, and the shortfall plan when there is one. Both sections
+  share `LineupResults.tsx`, and the job hook keeps one job per mode.
+- **Left for later**: re-optimizing without a binding item (not only re-solving over found
+  candidates), saved results, and the P4 comparison.
+
+## P3 measurements (2026-10-19)
+
+`tests/benchmark/lineupCost.ts --mode stygian` on the own account, in Node on a single thread,
+with Time per team 30 s. Three bosses: Lunar (Linnea or Aino), Sandrone (Alyosha or Bennett),
+and a national team (Xiangling · Xingqiu · Bennett · Kaeya) whose every build needs Bennett.
+
+| Step | Lunar | Sandrone | National |
+|---|---|---|---|
+| Composition ranking and set screens | 9.8 s | 11.7 s | 2.5 s |
+| Real-inventory runs | 46 s | 31 s | 25 s |
+
+- Diversify (chains and pairwise fixes, up to 8 re-runs) took 82 s; the run took 208 s in
+  total. Two runs gave identical candidates.
+- HiGHS solved the whole plan, with leximin, shortfall check and 16 binding re-solves, in
+  90 ms.
+- The best run is Lunar ×1.195 (without a contested piece), Sandrone with Alyosha ×1.217 and
+  national ×4.43. Before chains kept Bennett for the national team, the only full lineup
+  found had its weakest boss at ×1.074.
+- The national team's margins are high because its recorded build is weak. Only the ratio to
+  that build matters.
+
