@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { LineupSolver } from "@/components/teams/LineupSolver";
+import { AbyssLineups } from "@/components/teams/AbyssLineups";
 import type { Slot } from "@/domain/enums";
 import type { ArtifactData } from "@/domain/models";
 import { createAbyssEncounter, createTeamTemplate } from "@/domain/team/lineup";
@@ -18,7 +18,7 @@ const solver = vi.hoisted(() => ({
   signatures: [] as string[],
 }));
 vi.mock("@/hooks/useLineupSolver", () => ({
-  useLineupSolver: (signature: string) => {
+  useLineupSolver: (_mode: string, signature: string) => {
     solver.signatures.push(signature);
     return solver.state;
   },
@@ -125,10 +125,10 @@ beforeEach(() => {
   solver.signatures = [];
 });
 
-describe("LineupSolver", () => {
+describe("AbyssLineups", () => {
   it("needs account data and a recorded Abyss clear to run", () => {
     seed();
-    render(<LineupSolver />);
+    render(<AbyssLineups />);
     expect(screen.getByRole("button", { name: "Find lineups" })).toBeDisabled();
     expect(
       screen.getByText("Import account data to find lineups")
@@ -154,7 +154,7 @@ describe("LineupSolver", () => {
       },
       partial: false,
     });
-    const view = render(<LineupSolver />);
+    const view = render(<AbyssLineups />);
     expect(screen.getByText("Abyss 12-1")).toBeInTheDocument();
     // 1.1 · (120 − 10) / (100 − 10) and 0.9 · 110 / 90.
     expect(screen.getByText("×1.34")).toBeInTheDocument();
@@ -165,7 +165,7 @@ describe("LineupSolver", () => {
     // c1 alone: 1.2 · 110 / 90.
     expect(screen.getByText("×1.47 alone")).toBeInTheDocument();
     expect(
-      screen.getByText("Leaves the other half's artifacts")
+      screen.getByText("Leaves another team's artifacts")
     ).toBeInTheDocument();
 
     // A longer clear lowers the margin without a new run.
@@ -175,7 +175,7 @@ describe("LineupSolver", () => {
         measuredSeconds: 120,
       })
     );
-    view.rerender(<LineupSolver />);
+    view.rerender(<AbyssLineups />);
     expect(solver.signatures.at(-1)).toBe(signature);
     // 0.9 · 110 / 110
     expect(screen.getAllByText("×0.90").length).toBeGreaterThan(0);
@@ -189,7 +189,7 @@ describe("LineupSolver", () => {
       weaponCopies: { favonius_sword: 1 },
       partial: false,
     });
-    render(<LineupSolver />);
+    render(<AbyssLineups />);
     expect(
       screen.getByText("Diluc: No build found from your artifacts")
     ).toBeInTheDocument();

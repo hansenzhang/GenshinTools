@@ -2313,8 +2313,8 @@ export const i18nUiData = {
     vsRecorded: { en: "{0}% vs recorded build", zh: "较记录配装 {0}%" },
     bestAlone: { en: "×{0} alone", zh: "单独可达 ×{0}" },
     originPieces: {
-      en: "Leaves the other half's artifacts",
-      zh: "避开另一半场的圣遗物",
+      en: "Leaves another team's artifacts",
+      zh: "避开其他队伍的圣遗物",
     },
     originWeapon: {
       en: "Takes a free weapon copy",
@@ -2337,6 +2337,38 @@ export const i18nUiData = {
     issueNoCandidate: {
       en: "No build found from your artifacts",
       zh: "用已有圣遗物找不到配装",
+    },
+    needsMore: { en: "Needs +{0}% damage", zh: "伤害还差 {0}%" },
+    hardestToLose: { en: "Hardest to lose", zh: "最难割舍" },
+    hardestToLoseTip: {
+      en: "Characters and gear another team also wants, with the best weakest margin left without each.",
+      zh: "其他队伍也想用的角色和装备；数值为失去它后最佳阵容的最低余量。",
+    },
+    noAlternative: { en: "No alternative", zh: "无替代" },
+    stygianLineup: { en: "Stygian lineup", zh: "幽境危战阵容" },
+    needStygianClear: {
+      en: "Record a clear of a Stygian boss to find a lineup",
+      zh: "记录一次幽境危战首领通关后才能搜索阵容",
+    },
+    weakestBoss: { en: "Weakest boss", zh: "最弱首领" },
+    planLeximin: { en: "Best lineup", zh: "最佳阵容" },
+    planLeximinTip: {
+      en: "Lifts the weakest boss as high as it goes, then the next.",
+      zh: "先尽量提高最弱首领的余量，再提高次弱的。",
+    },
+    planShortfall: { en: "Smallest total shortfall", zh: "总差距最小" },
+    planShortfallTip: {
+      en: "No lineup clears every boss; this one falls short by the least in total.",
+      zh: "没有阵容能通关所有首领；该阵容的差距总和最小。",
+    },
+    solvingRun: { en: "Solving…", zh: "求解中…" },
+    planFailed: {
+      en: "The lineup could not be solved.",
+      zh: "无法求解阵容。",
+    },
+    noRunLineup: {
+      en: "No lineup fields every boss without sharing a character, artifact or weapon.",
+      zh: "没有能让每位首领都不共用角色、圣遗物或武器的阵容。",
     },
   },
   filters: {

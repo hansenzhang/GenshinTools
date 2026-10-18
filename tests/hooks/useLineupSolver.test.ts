@@ -27,7 +27,7 @@ beforeEach(() => {
 });
 afterEach(() => vi.unstubAllGlobals());
 
-const request = {} as LineupSolverRequest;
+const request = { mode: "abyss" } as LineupSolverRequest;
 function result(count: number, partial = false): LineupSolverResult {
   return {
     candidates: Array.from({ length: count }, (_, index) => ({
@@ -50,7 +50,7 @@ const nextSignature = () => `signature-${sequence++}`;
 describe("useLineupSolver", () => {
   it("posts the request, shows partial results and terminates when done", () => {
     const signature = nextSignature();
-    const view = renderHook(() => useLineupSolver(signature));
+    const view = renderHook(() => useLineupSolver("abyss", signature));
     act(() => view.result.current.start(request));
     expect(workers).toHaveLength(1);
     expect(workers[0].postMessage).toHaveBeenCalledWith(request);
@@ -76,21 +76,24 @@ describe("useLineupSolver", () => {
 
   it("keeps running while the view is closed", () => {
     const signature = nextSignature();
-    const first = renderHook(() => useLineupSolver(signature));
+    const first = renderHook(() => useLineupSolver("abyss", signature));
     act(() => first.result.current.start(request));
     first.unmount();
     expect(workers[0].terminate).not.toHaveBeenCalled();
     act(() => workers[0].emit({ type: "result", result: result(3) }));
-    const second = renderHook(() => useLineupSolver(signature));
+    const second = renderHook(() => useLineupSolver("abyss", signature));
     expect(second.result.current.result?.candidates).toHaveLength(3);
     expect(second.result.current.isComputing).toBe(false);
   });
 
   it("stops a run when its inputs change and hides other inputs' results", () => {
     const signature = nextSignature();
-    const view = renderHook((props) => useLineupSolver(props.signature), {
-      initialProps: { signature },
-    });
+    const view = renderHook(
+      (props) => useLineupSolver("abyss", props.signature),
+      {
+        initialProps: { signature },
+      }
+    );
     act(() => view.result.current.start(request));
     view.rerender({ signature: nextSignature() });
     expect(workers[0].terminate).toHaveBeenCalled();
@@ -101,7 +104,7 @@ describe("useLineupSolver", () => {
 
   it("reports errors and stops on request", () => {
     const signature = nextSignature();
-    const view = renderHook(() => useLineupSolver(signature));
+    const view = renderHook(() => useLineupSolver("abyss", signature));
     act(() => view.result.current.start(request));
     act(() => workers[0].emit({ type: "error", reason: "no-calibrations" }));
     expect(view.result.current.error).toBe("no-calibrations");
@@ -111,5 +114,26 @@ describe("useLineupSolver", () => {
     act(() => view.result.current.stop());
     expect(workers[1].terminate).toHaveBeenCalled();
     expect(view.result.current.isComputing).toBe(false);
+  });
+
+  it("runs each mode as its own job", () => {
+    const signature = nextSignature();
+    const abyss = renderHook(() => useLineupSolver("abyss", signature));
+    const stygian = renderHook(() => useLineupSolver("stygian", signature));
+    act(() => abyss.result.current.start(request));
+    act(() =>
+      stygian.result.current.start({
+        ...request,
+        mode: "stygian",
+      } as LineupSolverRequest)
+    );
+    expect(workers).toHaveLength(2);
+    expect(workers[0].terminate).not.toHaveBeenCalled();
+    act(() => workers[1].emit({ type: "result", result: result(1) }));
+    expect(stygian.result.current.result?.candidates).toHaveLength(1);
+    expect(abyss.result.current.isComputing).toBe(true);
+    act(() => abyss.result.current.stop());
+    expect(workers[0].terminate).toHaveBeenCalled();
+    expect(stygian.result.current.result?.candidates).toHaveLength(1);
   });
 });

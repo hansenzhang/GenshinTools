@@ -5,6 +5,7 @@ import type {
   LineupSolverRequest,
   LineupSolverResult,
 } from "@/domain/team/lineupSolverTypes";
+import type { EncounterMode } from "@/domain/team/lineupTypes";
 
 export type LineupSolverProgress = Extract<
   LineupSolverMessage,
@@ -33,14 +34,21 @@ const IDLE: LineupSolverJob = {
   isComputing: false,
 };
 
-// One job for the session: it keeps running while the Lineups view is closed,
-// and its finished result stays until inputs change and a new run starts.
-let job: LineupSolverJob = IDLE;
-let worker: Worker | null = null;
+// One job per mode for the session: it keeps running while the Lineups view
+// is closed, and its finished result stays until inputs change and a new run
+// starts.
+let jobs: Record<EncounterMode, LineupSolverJob> = {
+  abyss: IDLE,
+  stygian: IDLE,
+};
+const workers: Record<EncounterMode, Worker | null> = {
+  abyss: null,
+  stygian: null,
+};
 const listeners = new Set<() => void>();
 
-function update(patch: Partial<LineupSolverJob>) {
-  job = { ...job, ...patch };
+function update(mode: EncounterMode, patch: Partial<LineupSolverJob>) {
+  jobs = { ...jobs, [mode]: { ...jobs[mode], ...patch } };
   for (const listener of listeners) listener();
 }
 
@@ -49,15 +57,17 @@ function subscribe(listener: () => void) {
   return () => listeners.delete(listener);
 }
 
-function stopJob() {
-  worker?.terminate();
-  worker = null;
-  if (job.isComputing) update({ isComputing: false, progress: null });
+function stopJob(mode: EncounterMode) {
+  workers[mode]?.terminate();
+  workers[mode] = null;
+  if (jobs[mode].isComputing)
+    update(mode, { isComputing: false, progress: null });
 }
 
 function startJob(signature: string, request: LineupSolverRequest) {
-  worker?.terminate();
-  update({
+  const { mode } = request;
+  workers[mode]?.terminate();
+  update(mode, {
     signature,
     result: null,
     progress: null,
@@ -74,46 +84,52 @@ function startJob(signature: string, request: LineupSolverRequest) {
       { type: "module" }
     );
   } catch {
-    update({ error: "calculator-error", isComputing: false });
+    update(mode, { error: "calculator-error", isComputing: false });
     return;
   }
-  worker = taskWorker;
+  workers[mode] = taskWorker;
   const finish = (patch: Partial<LineupSolverJob>) => {
     taskWorker.terminate();
-    worker = null;
-    update({ ...patch, isComputing: false, progress: null });
+    workers[mode] = null;
+    update(mode, { ...patch, isComputing: false, progress: null });
   };
   taskWorker.onmessage = (event: MessageEvent<LineupSolverMessage>) => {
-    if (worker !== taskWorker) return;
+    if (workers[mode] !== taskWorker) return;
     const message = event.data;
-    if (message.type === "progress") update({ progress: message });
-    else if (message.type === "partial") update({ result: message.result });
+    if (message.type === "progress") update(mode, { progress: message });
+    else if (message.type === "partial")
+      update(mode, { result: message.result });
     else if (message.type === "result") finish({ result: message.result });
     else finish({ error: message.reason });
   };
   taskWorker.onerror = () => {
-    if (worker === taskWorker) finish({ error: "calculator-error" });
+    if (workers[mode] === taskWorker) finish({ error: "calculator-error" });
   };
   taskWorker.postMessage(request);
 }
 
 /**
- * Runs the lineup solver in a dedicated worker. Terminating it also stops the
- * optimizer workers it starts. Only a run for `signature` is reported; a run
- * for other inputs stops when this view sees them change.
+ * Runs the lineup solver for one mode in a dedicated worker. Terminating it
+ * also stops the optimizer workers it starts. Only a run for `signature` is
+ * reported; a run for other inputs stops when this view sees them change.
  */
-export function useLineupSolver(signature: string): LineupSolverState {
-  const current = useSyncExternalStore(subscribe, () => job);
+export function useLineupSolver(
+  mode: EncounterMode,
+  signature: string
+): LineupSolverState {
+  const current = useSyncExternalStore(subscribe, () => jobs[mode]);
   const matches = current.signature === signature;
 
   useEffect(() => {
-    if (job.isComputing && job.signature !== signature) stopJob();
-  }, [signature]);
+    if (jobs[mode].isComputing && jobs[mode].signature !== signature)
+      stopJob(mode);
+  }, [mode, signature]);
 
   const start = useCallback(
     (request: LineupSolverRequest) => startJob(signature, request),
     [signature]
   );
+  const stop = useCallback(() => stopJob(mode), [mode]);
 
   return {
     result: matches ? current.result : null,
@@ -121,6 +137,6 @@ export function useLineupSolver(signature: string): LineupSolverState {
     error: matches ? current.error : null,
     isComputing: matches && current.isComputing,
     start,
-    stop: stopJob,
+    stop,
   };
 }
