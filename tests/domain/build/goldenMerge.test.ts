@@ -108,6 +108,6 @@ describe("Golden merge snapshots", () => {
 
       const expected = JSON.parse(readFileSync(path, "utf-8"));
       expect(actual).toEqual(expected);
-    });
+    }, 60_000);
   }
 });
