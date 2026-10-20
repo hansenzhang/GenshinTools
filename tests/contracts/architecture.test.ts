@@ -21,11 +21,16 @@ it("keeps executable source under an explicit architecture owner", () => {
     "content",
     "generated",
   ]);
+  // Finder drops .DS_Store into any folder it opens; it is never source.
+  const isFinderMetadata = (name: string) => name === ".DS_Store";
   const unowned = readdirSync(path.join(root, "src"), { withFileTypes: true })
+    .filter((entry) => !isFinderMetadata(entry.name))
     .filter((entry) =>
       entry.isDirectory()
         ? !allowed.has(entry.name) &&
-          readdirSync(path.join(root, "src", entry.name)).length > 0
+          readdirSync(path.join(root, "src", entry.name)).some(
+            (name) => !isFinderMetadata(name)
+          )
         : !["main.tsx", "index.css", "vite-env.d.ts"].includes(entry.name)
     )
     .map((entry) => entry.name);
