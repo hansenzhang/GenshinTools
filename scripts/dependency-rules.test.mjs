@@ -6,6 +6,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { test } from "node:test";
 import { fileURLToPath } from "node:url";
+import { stripVTControlCharacters } from "node:util";
 
 test("dependency-cruiser rejects representative forbidden imports", () => {
   const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
@@ -89,7 +90,8 @@ test("dependency-cruiser rejects representative forbidden imports", () => {
       { cwd, encoding: "utf8" }
     );
     assert.ok(result.status > 0, result.stderr + result.stdout);
-    const violations = result.stdout;
+    // FORCE_COLOR in the caller's environment colors the report even when piped.
+    const violations = stripVTControlCharacters(result.stdout);
     assert.doesNotMatch(violations, /libraries-use-domain-contracts-only: src\/lib\/(?:typeOnly|namedTypeOnly)\.ts/);
     assert.match(violations, /production-has-no-test-dependencies: src\/providers\/bad\.ts.*node_modules\/vitest\/dist\/index\.js/);
     for (const rule of [
