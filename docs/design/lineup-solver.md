@@ -109,6 +109,7 @@ margin = r · (T_req − D) / (T_meas − D)
    - Map it to damage through the weakest team's gradient (`domain/combat/damage/core/marginalGain.ts`).
    - Value = E[max(0, gain − bar)]. The bar comes from the re-solve in step 4.
    - Rank by P(beats the incumbent), not by expected value, to avoid the optimizer's curse.
+   - see if character level/talent levels can improve damage meaningfully as well?
 
 ## Phases (one gate)
 
@@ -478,5 +479,10 @@ Found in the same replay, not fixed:
   out, so 7 of the Mizuki team's 10 runs failed `set-impossible`. The account estimate ranked
   those runs at ×1.33–1.49, because it picks from the whole inventory. The pool is shared by
   every optimizer caller, so the fix belongs with the optimizer.
-- **At 30 s per team no full lineup fit.** Every boss triple shared a piece; the account owns
-  one VV flower. The chains did not produce a conflict-free set within that budget.
+- **The pruning also blocks the better lineup.** At the export's 600 s per team (941 s in
+  Node, 13 of 69 search runs `set-impossible`), the best lineup is Sandrone ×1.00 (recorded),
+  Mizuki ×0.75 (recorded) and Lunar with Fischl and Bennett ×0.401; the shortfall plan's
+  weakest is ×0.355. Lunar reaches ×0.528 only with Sucrose, which needs Faruzan on the Mizuki
+  team. Every Faruzan build found shares pieces with every Lunar build with Sucrose, and takes
+  the account's one VV flower. Both chain re-runs that would have kept Faruzan clear failed on
+  Mizuki's Instructor pool. At 30 s per team no full lineup fit at all.
