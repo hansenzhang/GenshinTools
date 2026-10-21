@@ -471,18 +471,80 @@ Replayed in Node at 30 s per team, Yae and Odette are no longer any pieces. Faru
 account build is ×0.97 against Sucrose's ×1.10, and its composition ranks below Sucrose's
 (account estimate ×0.86 against ×1.15 at the current sets).
 
-Found in the same replay, not fixed:
+Found in the same replay:
 
-- **The optimizer prunes a slot before it groups by set.** `prepareSlotData` keeps the top
-  `maxArtsPerSlot` pieces per slot by score (and, for the carry, drops unlevelled pieces past
-  the top N) before it checks the set goal. Mizuki's 4★ Instructor flowers and plumes fell
-  out, so 7 of the Mizuki team's 10 runs failed `set-impossible`. The account estimate ranked
-  those runs at ×1.33–1.49, because it picks from the whole inventory. The pool is shared by
-  every optimizer caller, so the fix belongs with the optimizer.
-- **The pruning also blocks the better lineup.** At the export's 600 s per team (941 s in
-  Node, 13 of 69 search runs `set-impossible`), the best lineup is Sandrone ×1.00 (recorded),
-  Mizuki ×0.75 (recorded) and Lunar with Fischl and Bennett ×0.401; the shortfall plan's
-  weakest is ×0.355. Lunar reaches ×0.528 only with Sucrose, which needs Faruzan on the Mizuki
-  team. Every Faruzan build found shares pieces with every Lunar build with Sucrose, and takes
-  the account's one VV flower. Both chain re-runs that would have kept Faruzan clear failed on
-  Mizuki's Instructor pool. At 30 s per team no full lineup fit at all.
+- **The optimizer pruned a slot before it grouped by set.** `prepareSlotData` kept the top
+  `maxArtsPerSlot` pieces per slot by score (and, for the carry, dropped unlevelled pieces past
+  the top 50) before it checked the set goal. Mizuki's +0 4★ Instructor flowers and plumes fell
+  out, so every Mizuki-in-Instructor run failed `set-impossible`, although the account estimate,
+  which picks from the whole inventory, ranked them ×1.33–1.49. At the export's 600 s per team
+  (941 s in Node), 13 of 69 search runs failed this way, including both chain re-runs that would
+  have kept Faruzan clear of the Lunar team's pieces. The best lineup was Sandrone ×1.00, Mizuki
+  ×0.75 and Lunar with Fischl and Bennett ×0.401. At 30 s per team no full lineup fit.
+- **Fixed:** both cuts now also keep a piece that ranks within the cut among the pieces of its
+  goal group: the 4pc set, or one half of a 2pc+2pc. Off-set pieces still stop at the cut. The
+  fix sits in the shared optimizer, so every caller gets it; the generator's golden file is
+  unchanged. Replayed at 600 s per team (1,132 s in Node), all 69 search runs succeed and the
+  weakest boss rises to ×0.528: Sandrone ×0.914, Mizuki with Faruzan (Mizuki in Instructor)
+  ×0.881, Lunar with Sucrose ×0.528.
+
+## RES phases (design, 2026-10-21)
+
+Stygian bosses change RES during a fight: the Domovoy Sculptor starts at 90% and loses 20% per
+broken sculpture (Anemo 25%), up to 3 stacks; the Overseer Device sits at 200% while spinning
+and at Cryo −30% / others 30% while stunned; the Guardian Blade drops to −40% for 10 s after each
+of its two shields breaks. One RES per element cannot price RES shred across such phases: VV's
+−40% adds 22% damage at 200% RES and 50% at 30%.
+
+Decided with the user (2026-10-21): weight each phase by **time in phase**; enter phases **per
+encounter**; **save Stygian phases per boss** so a returning boss needs no re-entry.
+
+- **Phase**: `ResPhase { seconds; all: number | null; res: per-element }`. A phase's RES for
+  an element is its own entry, else `all`, else the encounter's base RES (else
+  `DEFAULT_ENCOUNTER_RES`). Every phase but the last lasts `seconds`; the last runs to the end
+  of the clear and ignores its seconds, which are kept for when a phase is added after it.
+  `Encounter.resPhases` is empty for a constant RES, as before.
+- **Weights** come from the calibration's measured clear `T_meas`: the phases take their
+  seconds in order until `T_meas` is used up, and the last takes the rest. Phases past `T_meas`
+  weigh nothing. Downtime is not placed in time, so it does not change the weights.
+- **Formula**: `CalcContext.enemyResPhases` holds `{ weight, resByElement }` per phase, resolved
+  for all eight elements. The RES multiplier becomes `Σ weight · f(RES − shred)`, with `f` the
+  usual three-branch curve, so shred is priced in each phase. Shred is constant in practice, so
+  the optimizer's compiled formula still folds it to one constant; the rare variable-shred
+  branch uses the weighted mean RES, as it uses the linear branch today. `resolveEnemyRes`
+  returns the weighted mean for display; breakdowns never show a lineup context.
+  `encounterCalcContext(encounter, base, clearSeconds)` builds it; `TeamBuild` carries it.
+- **Saved per boss**: the lineup store keeps `resPhasesByBoss`. Adding a Stygian encounter
+  copies its boss's saved phases, and editing a Stygian encounter's phases saves them for its
+  boss. Abyss halves change every cycle, so their phases stay on the encounter.
+- **Persistence**: `lineup-storage` v2 adds `resPhases: []` to each encounter and an empty
+  `resPhasesByBoss` (`stores/migration/lineup.ts`, old shape documented there). The store stays
+  device-local. Debug export v3 carries the phases; the replay reads v2 as no phases.
+- **Run inputs**: phases are part of the job signature. A calibration's measured clear joins
+  it when its encounter has phases, since the weights depend on it; otherwise editing the clear
+  still keeps a finished run.
+- **UI**: the encounter card lists phases: seconds (or "rest of the clear" for the last), All
+  RES and per-element overrides in the existing RES-by-element popover; add and remove.
+
+Examples, from the user's notes:
+
+| Boss | Phases |
+|---|---|
+| Domovoy Sculptor | 10 s All 90 · 16 s All 70, Anemo 65 · 16 s All 50, Anemo 40 · rest All 30, Anemo 15 |
+| Overseer Device | until the first stun (seconds the user plays) All 200 · rest All 30, Cryo −30; Nightsoul mode as an All 110 phase for teams that trigger it |
+| Guardian Blade | 20 s All −40 · rest at base RES (All empty) |
+
+Limits:
+
+- Every candidate uses the recorded clear's weights. A faster build would spend more of its
+  clear in the early phases.
+- Damage is assumed even over the clear: bursting into a low-RES window is not weighted up.
+- Fixed-HP events and HP gates are not RES and are not modelled: the Sculptor's 1,000,000 HP
+  explosions, the Guardian's 80% floor and shield time (downtime), the Overseer's energy.
+- Margins are ratios to the recorded build on the same boss, so phases matter where a
+  template's options differ in element or shred (Sucrose's VV against Faruzan, the Lunar flex
+  slot), not for a team whose members all face the same curve.
+
+Tests: phases with equal RES match a single RES (existing damage tests unchanged); shred is
+applied per phase; weights for clears shorter and longer than the listed phases; a v1 store
+fixture through hydration; a boss's phases reused by a new encounter.

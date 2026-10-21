@@ -521,7 +521,8 @@ export function runCharacterBnB(
     crDiscount,
     maxArtsPerSlot,
     effectiveMarginals,
-    isCarry
+    isCarry,
+    charConfig.artifactSet ?? null
   );
 
   // Empty pool check

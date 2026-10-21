@@ -10,9 +10,11 @@ import {
   getMainStatValueAtLevel,
   toInternal,
 } from "@/domain/build/artifact/scoring/utils";
+import { getHalfSetIds, getSetId } from "@/domain/combat/damage/utils";
 import type { StatKey } from "@/domain/enums";
 import { allSlots } from "@/domain/enums";
-import type { ArtifactData } from "@/domain/models";
+import type { ArtifactData, ArtifactSetConfig } from "@/domain/models";
+import { artifactIdToHalfSetId } from "@/domain/reference/catalog";
 import { charInfo } from "@/generated/catalog/characterInfo";
 import {
   type BuildMatchResult,
@@ -213,6 +215,46 @@ export function computeMarginalScore(
 
 // ─── Slot Data Preparation ───
 
+/**
+ * The part of a set goal a piece counts toward: the 4pc set, or one half of
+ * a 2pc+2pc. Null without a goal.
+ */
+function setGoalGroup(
+  setGoal: ArtifactSetConfig | null
+): ((artifact: ArtifactData) => string | null) | null {
+  const setId = getSetId(setGoal);
+  if (setId) return (artifact) => (artifact.setKey === setId ? setId : null);
+  const halves = getHalfSetIds(setGoal);
+  if (halves.length === 0) return null;
+  return (artifact) => {
+    const half = artifactIdToHalfSetId[artifact.setKey];
+    return half && halves.includes(half) ? half : null;
+  };
+}
+
+/**
+ * Pieces that rank within `limit` overall or within their goal group, in
+ * score order, plus any `alwaysKeep` accepts. A cut by score alone can leave
+ * a set goal unformable: low-scoring set pieces fall below off-set ones.
+ */
+function keepTop(
+  arts: ArtifactData[],
+  limit: number,
+  group: ((artifact: ArtifactData) => string | null) | null,
+  alwaysKeep: (artifact: ArtifactData) => boolean = () => false
+): ArtifactData[] {
+  const groupCounts: Record<string, number> = {};
+  return arts.filter((artifact, index) => {
+    const key = group?.(artifact);
+    if (key) groupCounts[key] = (groupCounts[key] ?? 0) + 1;
+    return (
+      index < limit ||
+      (key != null && groupCounts[key] <= limit) ||
+      alwaysKeep(artifact)
+    );
+  });
+}
+
 export function prepareSlotData(
   inventory: ArtifactData[],
   excludedIds: Set<string> | undefined,
@@ -220,9 +262,11 @@ export function prepareSlotData(
   crDiscount: number,
   maxArtsPerSlot = 0,
   marginals?: MarginalWeights | null,
-  filterUnleveled = false
+  filterUnleveled = false,
+  setGoal: ArtifactSetConfig | null = null
 ): PreparedSlotData[] {
   const result: PreparedSlotData[] = [];
+  const group = setGoalGroup(setGoal);
   for (let slotIndex = 0; slotIndex < 5; slotIndex++) {
     const slot = allSlots[slotIndex];
     let arts = inventory
@@ -235,12 +279,12 @@ export function prepareSlotData(
             computeWeightScore(a, buildMatch, crDiscount)
       );
     if (maxArtsPerSlot > 0 && arts.length > maxArtsPerSlot) {
-      arts = arts.slice(0, maxArtsPerSlot);
+      arts = keepTop(arts, maxArtsPerSlot, group);
     }
     // Drop unleveled artifacts beyond top N for carry characters.
     // Supports are excluded because they frequently use unleveled artifacts.
     if (filterUnleveled && arts.length > UNLEVELED_TOP_N) {
-      arts = arts.filter((a, i) => i < UNLEVELED_TOP_N || a.level > 0);
+      arts = keepTop(arts, UNLEVELED_TOP_N, group, (a) => a.level > 0);
     }
     const bySet = new Map<string, ArtifactData[]>();
     for (const art of arts) {
