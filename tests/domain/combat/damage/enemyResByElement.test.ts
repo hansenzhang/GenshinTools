@@ -12,7 +12,10 @@ import {
 import { StatSheet } from "@/domain/combat/damage/core/statSheet";
 import { TeamBuild } from "@/domain/combat/damage/core/teamBuild";
 import type { CalcContext, TeamSlotConfig } from "@/domain/combat/damage/types";
-import { resolveEnemyRes } from "@/domain/combat/damage/utils";
+import {
+  enemyResMultiplier,
+  resolveEnemyRes,
+} from "@/domain/combat/damage/utils";
 import { ELEMENT_KEYS, type StatKey } from "@/domain/enums";
 import {
   characterStatsResource,
@@ -161,5 +164,74 @@ describe("per-element enemy RES", () => {
     expect(damage({ ...CTX, enemyResByElement: { Pyro: 0.7 } })).toBeLessThan(
       single
     );
+  });
+});
+
+describe("enemy RES phases", () => {
+  const allAt = (res: number) =>
+    Object.fromEntries(ELEMENT_KEYS.map((element) => [element, res])) as Record<
+      (typeof ELEMENT_KEYS)[number],
+      number
+    >;
+  const phased = (phases: [number, number][]): CalcContext => ({
+    ...CTX,
+    enemyResPhases: phases.map(([weight, res]) => ({
+      weight,
+      resByElement: allAt(res),
+    })),
+  });
+
+  it("matches a single RES when every phase has it", () => {
+    const ctx = phased([
+      [0.25, 0.1],
+      [0.75, 0.1],
+    ]);
+    for (const formula of [pyroCharged, hydroSkill])
+      expect(formula.calc(sheet, 90, ctx)).toBeCloseTo(
+        formula.calc(sheet, 90, CTX),
+        9
+      );
+  });
+
+  it("weights each phase's multiplier by its time, after shred", () => {
+    // A quarter at 200% RES, the rest at 30%, with 40% shred:
+    // 0.25 × 1/(1 + 4 × 1.6) + 0.75 × (1 + 0.1/2).
+    const ctx = phased([
+      [0.25, 2],
+      [0.75, 0.3],
+    ]);
+    expect(enemyResMultiplier(ctx, "Cryo", 0.4)).toBeCloseTo(
+      0.25 / 7.4 + 0.75 * 1.05,
+      9
+    );
+    // The mean RES (0.725) after shred would give 1 − 0.325 instead.
+    expect(resolveEnemyRes(ctx, "Cryo")).toBeCloseTo(0.725, 9);
+    expect(pyroCharged.calc(sheet, 90, ctx)).toBeCloseTo(
+      (pyroCharged.calc(sheet, 90, CTX) * enemyResMultiplier(ctx, "Pyro", 0)) /
+        0.9,
+      6
+    );
+  });
+
+  it("compiles RES phases into the expression path", () => {
+    const ctx = phased([
+      [0.4, 0.9],
+      [0.6, -0.3],
+    ]);
+    const baseline = new StatSheet([
+      { key: "baseAtk", value: 800 },
+      { key: "cr", value: 0.05 },
+      { key: "cd", value: 0.5 },
+    ]);
+    const varMapping = new VarMapping();
+    const exprStats = createExprStats(
+      baseline,
+      0,
+      varMapping,
+      new Set<StatKey>(["atk%"])
+    );
+    const expr = simplify(pyroCharged.buildExpr(exprStats, 90, ctx));
+    const compiled = evaluate(expr, new Float64Array(varMapping.totalVars));
+    expect(compiled).toBeCloseTo(pyroCharged.calc(baseline, 90, ctx), 4);
   });
 });

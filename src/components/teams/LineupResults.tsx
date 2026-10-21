@@ -211,8 +211,17 @@ export function useLineupJob(
           ({ downtimeSeconds: _d, timeBarSeconds: _b, targets: _t, ...rest }) =>
             rest
         ),
+        // The measured clear only turns damage into margins, unless it
+        // weights the encounter's RES phases.
         calibrations: calibrations.map(
-          ({ measuredSeconds: _m, downtimeSeconds: _d, ...rest }) => rest
+          ({ measuredSeconds, downtimeSeconds: _d, ...rest }) =>
+            encounters.some(
+              (encounter) =>
+                encounter.id === rest.encounterId &&
+                encounter.resPhases.length > 0
+            )
+              ? { ...rest, measuredSeconds }
+              : rest
         ),
         teams,
         comboOverrides,

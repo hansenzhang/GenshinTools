@@ -70,6 +70,7 @@ const boss = (id: string, bossId: number): StygianEncounter => ({
   bossId,
   enemyLevel: 105,
   res: {},
+  resPhases: [],
   targets: "",
   downtimeSeconds: 10,
   timeBarSeconds: 120,

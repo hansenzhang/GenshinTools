@@ -61,9 +61,12 @@ function readExport(path: string): LineupDebugExport {
   const data = JSON.parse(readFileSync(path, "utf8")) as LineupDebugExport;
   if (data.format !== LINEUP_DEBUG_FORMAT)
     throw new Error(`${path} is not a lineup debug export.`);
-  if (data.version !== LINEUP_DEBUG_VERSION)
+  // Version 2 predates RES phases: its encounters have none.
+  if (data.version === 2)
+    for (const encounter of data.request.encounters) encounter.resPhases ??= [];
+  else if (data.version !== LINEUP_DEBUG_VERSION)
     throw new Error(
-      `${path} is version ${data.version}; this script reads ${LINEUP_DEBUG_VERSION}.`
+      `${path} is version ${data.version}; this script reads 2 and ${LINEUP_DEBUG_VERSION}.`
     );
   return data;
 }

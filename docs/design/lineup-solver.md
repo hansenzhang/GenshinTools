@@ -556,3 +556,36 @@ Limits:
 Tests: phases with equal RES match a single RES (existing damage tests unchanged); shred is
 applied per phase; weights for clears shorter and longer than the listed phases; a v1 store
 fixture through hydration; a boss's phases reused by a new encounter.
+
+## RES phases as built (2026-10-21)
+
+- **Formula**: `CalcContext.enemyResPhases` (`domain/combat/damage/types.ts`);
+  `enemyResMultiplier` and `resMultiplier` in `domain/combat/damage/utils.ts` replace the RES
+  curve in `computeResMult` and the constant branch of `computeResMultExpr`. `TeamBuild` keeps
+  the phases in its baseline context.
+- **Model**: `ResPhase` and `Encounter.resPhases` (`domain/team/lineupTypes.ts`);
+  `resPhaseWeights` and `encounterCalcContext(encounter, base, clearSeconds)`
+  (`domain/team/lineup.ts`). The lineup job passes each task's measured clear.
+- **Store**: `lineup-storage` v2 with `migrateLineupStore` (`stores/migration/lineup.ts`),
+  `resPhasesByBoss`, and `setResPhases`, which saves a Stygian boss's phases. The job signature
+  includes a calibration's measured clear when its encounter has phases. Debug export v3; the
+  replay reads v2 as no phases.
+- **UI**: the encounter card's RES phases list (`LineupEncounters.tsx`). The RES-by-element
+  popover moved from `GeneratorControls.tsx` to `ElementResInputs.tsx` (`ElementResPopover`)
+  and takes a fallback per element, so a phase's empty cells show the RES they stand for.
+  Checked in the dev server at 1440 px and 375 px wide, with no horizontal scroll.
+- **Measured** on the export at 600 s per team in Node, with the user's Sculptor phases (10 s at
+  90%, 16 s at 70/Anemo 65, 16 s at 50/Anemo 40, then 30/Anemo 15), Overseer phases (an assumed
+  15 s spin at 200%, then 30/Cryo −30) and Guardian phases (20 s at −40%, then base RES):
+
+  | Boss | Recorded damage | Chosen lineup without → with phases |
+  |---|---|---|
+  | Sculptor (Sandrone) | ×0.75 | ×0.914 → ×0.857 |
+  | Overseer (Mizuki, Faruzan) | ×1.04 | ×0.881 → ×0.918 |
+  | Guardian (Lunar, Sucrose) | ×1.02 | ×0.528 → ×0.528 |
+
+  The lineup and its weakest boss are unchanged. Sucrose stays ahead of Faruzan for the Mizuki
+  team (best ×1.135 against ×1.012 with phases, ×1.119 against ×0.997 without). As the limits
+  above predict, phases move absolute damage more than the ratios that margins use.
+- **Open**: the Overseer's spin length is a guess until the user enters it; phases in the
+  browser need the user's own run.

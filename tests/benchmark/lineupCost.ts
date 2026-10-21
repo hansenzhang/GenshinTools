@@ -120,6 +120,7 @@ function encountersFor(mode: EncounterMode, count: number): Encounter[] {
           bossId: index + 1,
           enemyLevel: 105,
           res: {},
+          resPhases: [],
           targets: "",
           ...timing,
         };

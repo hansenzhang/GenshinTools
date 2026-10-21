@@ -21,6 +21,7 @@ import type {
   CompositionRule,
   Encounter,
   ReferenceBuild,
+  ResPhase,
   StygianEncounter,
   TeamTemplate,
   TemplateComposition,
@@ -43,17 +44,20 @@ export function createAbyssEncounter(
     half,
     enemyLevel: 100,
     res: {},
+    resPhases: [],
     targets: "",
     downtimeSeconds: 0,
     timeBarSeconds: null,
   };
 }
 
-/** A Stygian encounter at Fearless with the boss's level and base RES. */
+/** A Stygian encounter at Fearless with the boss's level and base RES, and
+ *  the RES phases saved for the boss. */
 export function createStygianEncounter(
   id: string,
   bossId: number,
-  boss: BossInfo
+  boss: BossInfo,
+  resPhases: readonly ResPhase[] = []
 ): StygianEncounter {
   const tier = boss.tiers[String(STYGIAN_FEARLESS_TIER)];
   if (!tier) throw new Error(`Stygian boss ${bossId} has no Fearless tier.`);
@@ -68,6 +72,7 @@ export function createStygianEncounter(
     bossId,
     enemyLevel: tier.level,
     res,
+    resPhases: resPhases.map((phase) => ({ ...phase, res: { ...phase.res } })),
     targets: "",
     downtimeSeconds: 0,
     timeBarSeconds: null,
@@ -81,18 +86,53 @@ export function encounterRes(
   return encounter.res[element] ?? DEFAULT_ENCOUNTER_RES;
 }
 
-/** A team's calculation context against this encounter's enemy. */
+/** Each RES phase's share of a clear of `clearSeconds`: the phases take
+ *  their seconds in order and the last takes what is left. */
+export function resPhaseWeights(
+  phases: readonly ResPhase[],
+  clearSeconds: number
+): number[] {
+  let left = clearSeconds;
+  return phases.map((phase, index) => {
+    const seconds =
+      index === phases.length - 1 ? left : Math.min(phase.seconds, left);
+    left -= seconds;
+    return seconds / clearSeconds;
+  });
+}
+
+/** A team's calculation context against this encounter's enemy, with its RES
+ *  phases weighted over a clear of `clearSeconds`. */
 export function encounterCalcContext(
   encounter: Encounter,
-  base: CalcContext
+  base: CalcContext,
+  clearSeconds: number
 ): CalcContext {
+  const enemyResByElement = Object.fromEntries(
+    ELEMENT_KEYS.map((element) => [element, encounterRes(encounter, element)])
+  ) as Record<ElementalOrPhysical, number>;
+  const weights = resPhaseWeights(encounter.resPhases, clearSeconds);
+  const enemyResPhases = encounter.resPhases.flatMap((phase, index) =>
+    weights[index] > 0
+      ? [
+          {
+            weight: weights[index],
+            resByElement: Object.fromEntries(
+              ELEMENT_KEYS.map((element) => [
+                element,
+                phase.res[element] ?? phase.all ?? enemyResByElement[element],
+              ])
+            ) as Record<ElementalOrPhysical, number>,
+          },
+        ]
+      : []
+  );
   return {
     ...base,
     enemyLevel: encounter.enemyLevel,
     enemyRes: DEFAULT_ENCOUNTER_RES,
-    enemyResByElement: Object.fromEntries(
-      ELEMENT_KEYS.map((element) => [element, encounterRes(encounter, element)])
-    ),
+    enemyResByElement,
+    enemyResPhases: enemyResPhases.length > 0 ? enemyResPhases : undefined,
   };
 }
 

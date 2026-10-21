@@ -3,21 +3,24 @@ import { useCallback } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useLanguage } from "@/contexts/LanguageContext";
+import { ELEMENT_KEYS } from "@/domain/enums";
 import { DEFAULT_ENCOUNTER_RES } from "@/domain/team/constants";
 import {
   createAbyssEncounter,
   createStygianEncounter,
+  encounterRes,
 } from "@/domain/team/lineup";
-import type { Encounter } from "@/domain/team/lineupTypes";
+import type { Encounter, ResPhase } from "@/domain/team/lineupTypes";
 import {
   numericInputFilter,
+  signedNumericInputFilter,
   useDeferredTextInput,
 } from "@/hooks/useDeferredTextInput";
 import { useResource } from "@/hooks/useResource";
 import { getAssetUrl } from "@/lib/assets/urls.ts";
 import { leylineBossResource } from "@/providers/reference/gameDataLoader";
 import { newLineupId, useLineupStore } from "@/stores/useLineupStore";
-import { ElementResInputs } from "./ElementResInputs";
+import { ElementResInputs, ElementResPopover } from "./ElementResInputs";
 
 export const LINEUP_SECTION_CLS =
   "overflow-hidden rounded-xl border border-foreground/20 bg-gradient-card";
@@ -87,6 +90,160 @@ export function NumberField({
       />
       {unit && (
         <span className="text-xs font-bold text-muted-foreground">{unit}</span>
+      )}
+    </div>
+  );
+}
+
+/** A signed percent input that commits a fraction on blur or Enter. Empty
+ *  commits null. */
+function PercentField({
+  label,
+  value,
+  placeholder,
+  onCommit,
+}: {
+  label: string;
+  value: number | null;
+  placeholder?: string;
+  onCommit: (value: number | null) => void;
+}) {
+  const input = useDeferredTextInput(
+    value == null ? "" : String(Math.round(value * 1000) / 10),
+    (raw) => {
+      const parsed = Number(raw);
+      onCommit(
+        raw === "" || raw === "-" || !Number.isFinite(parsed)
+          ? null
+          : parsed / 100
+      );
+    },
+    { filter: signedNumericInputFilter }
+  );
+  return (
+    <div className="flex items-center gap-1">
+      <span className={LABEL_CLS}>{label}</span>
+      <Input
+        type="text"
+        inputMode="decimal"
+        aria-label={label}
+        value={input.value}
+        placeholder={placeholder}
+        onChange={input.onChange}
+        onBlur={input.onBlur}
+        onKeyDown={input.onKeyDown}
+        className={NUMBER_CLS}
+      />
+      <span className="text-xs font-bold text-muted-foreground">%</span>
+    </div>
+  );
+}
+
+const NEW_RES_PHASE: ResPhase = { seconds: 10, all: null, res: {} };
+
+/** The encounter's RES phases, in fight order; the last runs to the end. */
+function ResPhases({ encounter }: { encounter: Encounter }) {
+  const { t } = useLanguage();
+  const setResPhases = useLineupStore((s) => s.setResPhases);
+  const phases = encounter.resPhases;
+  const save = (next: ResPhase[]) => setResPhases(encounter.id, next);
+  const patch = (index: number, change: Partial<ResPhase>) =>
+    save(
+      phases.map((phase, entry) =>
+        entry === index ? { ...phase, ...change } : phase
+      )
+    );
+  const seconds = t.ui("teamComp.dpsSeconds");
+
+  return (
+    <div className="flex flex-col gap-1.5">
+      <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+        <span className={LABEL_CLS} title={t.ui("lineup.resPhasesTip")}>
+          {t.ui("lineup.resPhases")}
+        </span>
+        {encounter.mode === "stygian" && phases.length > 0 && (
+          <span className="text-xs text-muted-foreground">
+            {t.ui("lineup.resPhasesSaved")}
+          </span>
+        )}
+        <Button
+          variant="ghost"
+          size="sm"
+          className="ml-auto h-7 gap-1 px-2 text-xs"
+          onClick={() => save([...phases, { ...NEW_RES_PHASE }])}
+        >
+          <Plus className="h-3.5 w-3.5" />
+          {t.ui("lineup.addResPhase")}
+        </Button>
+      </div>
+      {phases.length === 0 ? (
+        <p className="text-xs text-muted-foreground">
+          {t.ui("lineup.resPhasesNone")}
+        </p>
+      ) : (
+        <ol className="flex flex-col gap-1">
+          {phases.map((phase, index) => {
+            const last = index === phases.length - 1;
+            const fallback = Object.fromEntries(
+              ELEMENT_KEYS.map((element) => [
+                element,
+                phase.all ?? encounterRes(encounter, element),
+              ])
+            ) as Record<(typeof ELEMENT_KEYS)[number], number>;
+            return (
+              <li
+                key={index}
+                className="flex items-center gap-2 rounded-md border border-foreground/15 bg-background/40 px-2 py-1"
+              >
+                <span className="w-4 shrink-0 text-xs font-bold text-muted-foreground">
+                  {index + 1}
+                </span>
+                <div className="flex min-w-0 flex-1 flex-wrap items-center gap-x-3 gap-y-1">
+                  {last ? (
+                    <span className={LABEL_CLS}>
+                      {t.ui("lineup.resPhaseRest")}
+                    </span>
+                  ) : (
+                    <NumberField
+                      label={t.ui("lineup.resPhaseLasts")}
+                      value={phase.seconds}
+                      unit={seconds}
+                      onCommit={(value) => {
+                        if (value != null && value > 0)
+                          patch(index, { seconds: value });
+                      }}
+                    />
+                  )}
+                  <div className="flex items-center">
+                    <PercentField
+                      label={t.ui("lineup.resPhaseAll")}
+                      value={phase.all}
+                      placeholder="—"
+                      onCommit={(all) => patch(index, { all })}
+                    />
+                    <ElementResPopover
+                      values={phase.res}
+                      fallback={fallback}
+                      onChange={(res) => patch(index, { res: res ?? {} })}
+                    />
+                  </div>
+                </div>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-7 w-7 shrink-0 text-muted-foreground hover:text-destructive"
+                  aria-label={t.format("lineup.removeResPhase", index + 1)}
+                  title={t.format("lineup.removeResPhase", index + 1)}
+                  onClick={() =>
+                    save(phases.filter((_, entry) => entry !== index))
+                  }
+                >
+                  <Trash2 className="h-4 w-4" />
+                </Button>
+              </li>
+            );
+          })}
+        </ol>
       )}
     </div>
   );
@@ -204,6 +361,7 @@ function EncounterCard({ encounter }: { encounter: Encounter }) {
         fallback={DEFAULT_ENCOUNTER_RES}
         onChange={(res) => update({ res })}
       />
+      <ResPhases encounter={encounter} />
     </div>
   );
 }
@@ -212,6 +370,7 @@ export function LineupEncounters() {
   const { t } = useLanguage();
   const encounters = useLineupStore((s) => s.encounters);
   const addEncounters = useLineupStore((s) => s.addEncounters);
+  const resPhasesByBoss = useLineupStore((s) => s.resPhasesByBoss);
   const bossData = useResource(leylineBossResource);
 
   const abyssChambers = new Set(
@@ -246,7 +405,14 @@ export function LineupEncounters() {
       seasonBossIds.flatMap((bossId) => {
         const boss = bossData.getBossInfo(bossId);
         return boss
-          ? [createStygianEncounter(newLineupId("encounter"), bossId, boss)]
+          ? [
+              createStygianEncounter(
+                newLineupId("encounter"),
+                bossId,
+                boss,
+                resPhasesByBoss[String(bossId)]
+              ),
+            ]
           : [];
       })
     );

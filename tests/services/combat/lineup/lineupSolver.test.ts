@@ -497,6 +497,7 @@ describe("runLineupSolver for a Stygian run", () => {
     bossId,
     enemyLevel: 100,
     res: {},
+    resPhases: [],
     targets: "",
     downtimeSeconds: 10,
     timeBarSeconds: 120,

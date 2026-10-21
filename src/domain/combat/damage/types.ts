@@ -412,6 +412,13 @@ export type DisplayResult = {
 /** How the crit multiplier is displayed (display-only, not used in optimizer). */
 export type CritMode = "expected" | "crit" | "noCrit";
 
+/** One phase of an enemy's RES: its share of the fight and RES per element. */
+export type EnemyResPhase = {
+  /** Share of the fight's time (phases sum to 1). */
+  weight: number;
+  resByElement: Record<ElementalOrPhysical, number>;
+};
+
 /**
  * Scenario-level parameters for damage calculation.
  * Constant for the entire team — individual character implementations
@@ -423,6 +430,9 @@ export type CalcContext = {
   enemyRes: number;
   /** Per-element base RES (fraction). Missing elements use `enemyRes`. */
   enemyResByElement?: Partial<Record<ElementalOrPhysical, number>>;
+  /** RES over a fight that changes it, weighted by time in each phase.
+   *  When present it replaces `enemyRes` and `enemyResByElement`. */
+  enemyResPhases?: EnemyResPhase[];
   perCharCrTarget?: Record<string, number>; // charId → 0-100 integer; per-char CR targets
   rollMultiplier: number; // 0.7–1.0
   substatBudget: SubstatBudgetPreset;

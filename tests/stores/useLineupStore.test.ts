@@ -1,6 +1,10 @@
 import { beforeEach, describe, expect, it } from "vitest";
-import { createAbyssEncounter, createTeamTemplate } from "@/domain/team/lineup";
-import type { Calibration } from "@/domain/team/lineupTypes";
+import {
+  createAbyssEncounter,
+  createStygianEncounter,
+  createTeamTemplate,
+} from "@/domain/team/lineup";
+import type { Calibration, ResPhase } from "@/domain/team/lineupTypes";
 import { teamCompInputToComp } from "@/domain/team/teamDeltas";
 import { useLineupStore } from "@/stores/useLineupStore";
 
@@ -67,7 +71,12 @@ function seed() {
 
 beforeEach(() => {
   localStorage.clear();
-  useLineupStore.setState({ encounters: [], templates: [], calibrations: [] });
+  useLineupStore.setState({
+    encounters: [],
+    templates: [],
+    calibrations: [],
+    resPhasesByBoss: {},
+  });
 });
 
 describe("lineup store", () => {
@@ -166,6 +175,9 @@ describe("lineup store", () => {
     await useLineupStore.persist.rehydrate();
     const state = useLineupStore.getState();
     expect(state.encounters.map((entry) => entry.id)).toEqual(["e1", "e2"]);
+    // v1 had no RES phases: every encounter keeps its base RES throughout.
+    expect(state.encounters.map((entry) => entry.resPhases)).toEqual([[], []]);
+    expect(state.resPhasesByBoss).toEqual({});
     // An unknown element drops the RES map to the 10% default.
     expect(state.encounters[0]!.res).toEqual({});
     expect(state.encounters[1]).toMatchObject({
@@ -180,5 +192,57 @@ describe("lineup store", () => {
     expect(
       state.calibrations[0]!.reference.artifactsByChar.hu_tao
     ).toHaveLength(1);
+  });
+
+  it("saves a Stygian boss's RES phases, not an Abyss half's", () => {
+    const phases: ResPhase[] = [
+      { seconds: 12, all: 2, res: {} },
+      { seconds: 10, all: 0.3, res: { Cryo: -0.3 } },
+    ];
+    const store = useLineupStore.getState();
+    store.addEncounters([
+      createAbyssEncounter("abyss", 1, 1),
+      createStygianEncounter("boss", 10013, {
+        id: 10013,
+        tiers: { "5": { id: 1, level: 105 } },
+      }),
+    ]);
+    store.setResPhases("abyss", phases);
+    store.setResPhases("boss", phases);
+    const state = useLineupStore.getState();
+    expect(state.encounters.map((entry) => entry.resPhases)).toEqual([
+      phases,
+      phases,
+    ]);
+    expect(state.resPhasesByBoss).toEqual({ "10013": phases });
+  });
+
+  it("keeps RES phases and a boss's saved phases across a reload", async () => {
+    const phases: ResPhase[] = [
+      { seconds: 20, all: -0.4, res: {} },
+      { seconds: 10, all: null, res: {} },
+    ];
+    localStorage.setItem(
+      "lineup-storage",
+      JSON.stringify({
+        version: 2,
+        state: {
+          encounters: [
+            {
+              ...createAbyssEncounter("e1", 1, 1),
+              resPhases: [...phases, { seconds: -1, all: 0, res: {} }],
+            },
+          ],
+          templates: [],
+          calibrations: [],
+          resPhasesByBoss: { "10123": phases },
+        },
+      })
+    );
+    await useLineupStore.persist.rehydrate();
+    const state = useLineupStore.getState();
+    // A phase without a positive length is dropped.
+    expect(state.encounters[0]!.resPhases).toEqual(phases);
+    expect(state.resPhasesByBoss).toEqual({ "10123": phases });
   });
 });

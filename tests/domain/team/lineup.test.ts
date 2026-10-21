@@ -12,9 +12,14 @@ import {
   createStygianEncounter,
   createTeamTemplate,
   encounterCalcContext,
+  resPhaseWeights,
   templateCompositions,
 } from "@/domain/team/lineup";
-import type { Calibration, TeamTemplate } from "@/domain/team/lineupTypes";
+import type {
+  Calibration,
+  ResPhase,
+  TeamTemplate,
+} from "@/domain/team/lineupTypes";
 import { teamCompInputToComp } from "@/domain/team/teamDeltas";
 
 const team = teamCompInputToComp({
@@ -80,7 +85,7 @@ describe("encounters", () => {
       tiers: { "5": { id: 2, level: 105 } },
     });
     expect(encounter.res).toEqual({});
-    const ctx = encounterCalcContext(encounter, DEFAULT_CALC_CONTEXT);
+    const ctx = encounterCalcContext(encounter, DEFAULT_CALC_CONTEXT, 100);
     for (const element of ELEMENT_KEYS)
       expect(resolveEnemyRes(ctx, element)).toBe(0.1);
   });
@@ -91,17 +96,78 @@ describe("encounters", () => {
       enemyLevel: 95,
       res: { Pyro: 0.7 },
     };
-    const ctx = encounterCalcContext(encounter, {
-      ...DEFAULT_CALC_CONTEXT,
-      enemyRes: 0.4,
-      enemyResByElement: { Hydro: 0.9 },
-      rollMultiplier: 1,
-    });
+    const ctx = encounterCalcContext(
+      encounter,
+      {
+        ...DEFAULT_CALC_CONTEXT,
+        enemyRes: 0.4,
+        enemyResByElement: { Hydro: 0.9 },
+        rollMultiplier: 1,
+      },
+      100
+    );
     expect(ctx.enemyLevel).toBe(95);
     expect(ctx.rollMultiplier).toBe(1);
     expect(resolveEnemyRes(ctx, "Pyro")).toBe(0.7);
     expect(resolveEnemyRes(ctx, "Hydro")).toBe(0.1);
     expect(resolveEnemyRes(ctx, "Physical")).toBe(0.1);
+    expect(ctx.enemyResPhases).toBeUndefined();
+  });
+});
+
+describe("RES phases", () => {
+  // The Domovoy Sculptor at Fearless: 90% RES, then three broken sculptures.
+  const sculptor: ResPhase[] = [
+    { seconds: 10, all: 0.9, res: {} },
+    { seconds: 16, all: 0.7, res: { Anemo: 0.65 } },
+    { seconds: 16, all: 0.5, res: { Anemo: 0.4 } },
+    { seconds: 999, all: 0.3, res: { Anemo: 0.15 } },
+  ];
+
+  it("weights phases by their time in the clear, the last taking the rest", () => {
+    expect(resPhaseWeights(sculptor, 120)).toEqual([
+      10 / 120,
+      16 / 120,
+      16 / 120,
+      78 / 120,
+    ]);
+    // A clear shorter than the listed phases ends inside one.
+    expect(resPhaseWeights(sculptor, 20)).toEqual([0.5, 0.5, 0, 0]);
+  });
+
+  it("resolves each phase's RES from its entry, its All value, then the base", () => {
+    const encounter = {
+      ...createAbyssEncounter("e", 1, 1),
+      res: { Cryo: 0.5 },
+      resPhases: [
+        { seconds: 20, all: -0.4, res: {} },
+        { seconds: 0, all: null, res: { Pyro: 0.3 } },
+      ],
+    };
+    const ctx = encounterCalcContext(encounter, DEFAULT_CALC_CONTEXT, 100);
+    expect(ctx.enemyResPhases?.map((phase) => phase.weight)).toEqual([
+      0.2, 0.8,
+    ]);
+    expect(ctx.enemyResPhases?.[0].resByElement.Cryo).toBe(-0.4);
+    expect(ctx.enemyResPhases?.[1].resByElement).toMatchObject({
+      Cryo: 0.5,
+      Pyro: 0.3,
+      Hydro: 0.1,
+    });
+    // Phases the clear never reaches are left out.
+    const short = encounterCalcContext(encounter, DEFAULT_CALC_CONTEXT, 15);
+    expect(short.enemyResPhases).toHaveLength(1);
+  });
+
+  it("starts a boss's encounter from its saved phases, as a copy", () => {
+    const encounter = createStygianEncounter(
+      "e",
+      10121,
+      { id: 10121, tiers: { "5": { id: 1, level: 105 } } },
+      sculptor
+    );
+    expect(encounter.resPhases).toEqual(sculptor);
+    expect(encounter.resPhases[1]!.res).not.toBe(sculptor[1]!.res);
   });
 });
 

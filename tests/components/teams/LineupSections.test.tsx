@@ -2,7 +2,11 @@ import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it } from "vitest";
 import { LineupEncounters } from "@/components/teams/LineupEncounters";
 import { LineupTemplates } from "@/components/teams/LineupTemplates";
-import { createAbyssEncounter, createTeamTemplate } from "@/domain/team/lineup";
+import {
+  createAbyssEncounter,
+  createStygianEncounter,
+  createTeamTemplate,
+} from "@/domain/team/lineup";
 import { useLineupStore } from "@/stores/useLineupStore";
 import { useTeamStore } from "@/stores/useTeamStore";
 import { render, screen } from "../../utils/render";
@@ -30,7 +34,12 @@ function seedTeam(): string {
 beforeEach(() => {
   localStorage.clear();
   useTeamStore.getState().clearTeams();
-  useLineupStore.setState({ encounters: [], templates: [], calibrations: [] });
+  useLineupStore.setState({
+    encounters: [],
+    templates: [],
+    calibrations: [],
+    resPhasesByBoss: {},
+  });
 });
 
 describe("LineupEncounters", () => {
@@ -63,6 +72,44 @@ describe("LineupEncounters", () => {
       timeBarSeconds: 180,
       res: { Geo: 0.7 },
     });
+  });
+
+  it("edits RES phases and saves a boss's for its next encounter", async () => {
+    const user = userEvent.setup();
+    useLineupStore.getState().addEncounters([
+      createStygianEncounter("boss", 10013, {
+        id: 10013,
+        tiers: { "5": { id: 1, level: 105 } },
+      }),
+    ]);
+    render(<LineupEncounters />);
+    expect(
+      screen.getByText(/Base RES for the whole clear/)
+    ).toBeInTheDocument();
+    const add = screen.getByRole("button", { name: "Add phase" });
+    await user.click(add);
+    await user.click(add);
+    const [spin, stun] = screen.getAllByRole("textbox", { name: "All RES" });
+    await user.type(spin!, "200{Enter}");
+    await user.type(stun!, "30{Enter}");
+    await user.clear(screen.getByRole("textbox", { name: "Lasts" }));
+    await user.type(
+      screen.getByRole("textbox", { name: "Lasts" }),
+      "12{Enter}"
+    );
+    expect(screen.getByText("Rest of the clear")).toBeInTheDocument();
+    const phases = [
+      { seconds: 12, all: 2, res: {} },
+      { seconds: 10, all: 0.3, res: {} },
+    ];
+    expect(useLineupStore.getState().encounters[0]!.resPhases).toEqual(phases);
+    expect(useLineupStore.getState().resPhasesByBoss).toEqual({
+      "10013": phases,
+    });
+    await user.click(screen.getByRole("button", { name: "Remove phase 1" }));
+    expect(useLineupStore.getState().encounters[0]!.resPhases).toEqual([
+      phases[1],
+    ]);
   });
 });
 

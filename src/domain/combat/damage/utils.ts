@@ -28,12 +28,41 @@ export function resolveCalcContext(ctx?: Partial<CalcContext>): CalcContext {
   return { ...DEFAULT_CALC_CONTEXT, ...ctx };
 }
 
-/** Enemy base RES against one damage element, before RES shred. */
+/** Enemy base RES against one damage element, before RES shred. With RES
+ *  phases, their time-weighted mean. */
 export function resolveEnemyRes(
   ctx: CalcContext,
   element: ElementalOrPhysical
 ): number {
+  if (ctx.enemyResPhases?.length)
+    return ctx.enemyResPhases.reduce(
+      (sum, phase) => sum + phase.weight * phase.resByElement[element],
+      0
+    );
   return ctx.enemyResByElement?.[element] ?? ctx.enemyRes;
+}
+
+/** Damage multiplier of an enemy RES after shred. */
+export function resMultiplier(effectiveRes: number): number {
+  if (effectiveRes < 0) return 1 - effectiveRes / 2;
+  if (effectiveRes <= 0.75) return 1 - effectiveRes;
+  return 1 / (1 + 4 * effectiveRes);
+}
+
+/** RES multiplier against one element after `shred`. With RES phases, each
+ *  phase's multiplier weighted by its time, so shred is priced per phase. */
+export function enemyResMultiplier(
+  ctx: CalcContext,
+  element: ElementalOrPhysical,
+  shred: number
+): number {
+  if (!ctx.enemyResPhases?.length)
+    return resMultiplier(resolveEnemyRes(ctx, element) - shred);
+  return ctx.enemyResPhases.reduce(
+    (sum, phase) =>
+      sum + phase.weight * resMultiplier(phase.resByElement[element] - shred),
+    0
+  );
 }
 
 /** Datamine coeff for a Polestar Field attach hit count (clamped to table). */

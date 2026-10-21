@@ -4,8 +4,10 @@ import { immer } from "zustand/middleware/immer";
 import type {
   Calibration,
   Encounter,
+  ResPhase,
   TeamTemplate,
 } from "@/domain/team/lineupTypes";
+import { migrateLineupStore } from "./migration/lineup";
 import { PersistedLineupStoreSchema } from "./schemas";
 
 let _lineupIdSeq = 0;
@@ -17,6 +19,9 @@ type LineupData = {
   encounters: Encounter[];
   templates: TeamTemplate[];
   calibrations: Calibration[];
+  /** RES phases last entered for each Stygian boss, by boss id. New
+   *  encounters of the boss start from them. */
+  resPhasesByBoss: Record<string, ResPhase[]>;
 };
 
 interface LineupState extends LineupData {
@@ -25,6 +30,9 @@ interface LineupState extends LineupData {
     id: string,
     update: (encounter: Encounter) => Encounter
   ) => void;
+  /** Sets an encounter's RES phases, and saves a Stygian boss's for its
+   *  next encounter. */
+  setResPhases: (id: string, phases: ResPhase[]) => void;
   removeEncounter: (id: string) => void;
   addTemplate: (template: TeamTemplate) => void;
   updateTemplate: (
@@ -76,6 +84,7 @@ export function mergeLineupStore<TState extends LineupData>(
     encounters: data.encounters,
     templates: data.templates,
     calibrations: consistentCalibrations(data),
+    resPhasesByBoss: data.resPhasesByBoss,
   };
 }
 
@@ -85,6 +94,7 @@ export const useLineupStore = create<LineupState>()(
       encounters: [],
       templates: [],
       calibrations: [],
+      resPhasesByBoss: {},
 
       addEncounters: (encounters) =>
         set((state) => {
@@ -96,6 +106,15 @@ export const useLineupStore = create<LineupState>()(
           const index = state.encounters.findIndex((entry) => entry.id === id);
           if (index === -1) return;
           state.encounters[index] = { ...update(state.encounters[index]), id };
+        }),
+
+      setResPhases: (id, phases) =>
+        set((state) => {
+          const encounter = state.encounters.find((entry) => entry.id === id);
+          if (!encounter) return;
+          encounter.resPhases = phases;
+          if (encounter.mode === "stygian")
+            state.resPhasesByBoss[String(encounter.bossId)] = phases;
         }),
 
       removeEncounter: (id) =>
@@ -157,12 +176,14 @@ export const useLineupStore = create<LineupState>()(
     })),
     {
       name: "lineup-storage",
-      version: 1,
+      version: 2,
       partialize: (state) => ({
         encounters: state.encounters,
         templates: state.templates,
         calibrations: state.calibrations,
+        resPhasesByBoss: state.resPhasesByBoss,
       }),
+      migrate: migrateLineupStore,
       merge: mergeLineupStore,
     }
   )

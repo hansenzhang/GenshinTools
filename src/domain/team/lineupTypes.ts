@@ -6,12 +6,28 @@ import type { ArtifactData } from "@/domain/models";
 
 export type EncounterMode = "abyss" | "stygian";
 
+/** A stretch of a fight with its own RES (docs/design/lineup-solver.md,
+ *  "RES phases"). */
+export interface ResPhase {
+  /** Length in seconds. The last phase ignores it and runs to the end of
+   *  the clear. */
+  seconds: number;
+  /** RES for every element without its own entry, as a fraction; null keeps
+   *  the encounter's base RES. */
+  all: number | null;
+  /** RES per element as fractions. */
+  res: Partial<Record<ElementalOrPhysical, number>>;
+}
+
 interface EncounterBase {
   id: string;
   enemyLevel: number;
   /** Base RES per element as fractions (0.1 = 10%). Missing elements use
    *  DEFAULT_ENCOUNTER_RES. */
   res: Partial<Record<ElementalOrPhysical, number>>;
+  /** RES over the clear, weighted by time in each phase. Empty for the base
+   *  RES throughout. */
+  resPhases: ResPhase[];
   /** Free-text note on target count, waves and grouping. */
   targets: string;
   /** Estimated seconds in a clear without damage: waves, travel, immune phases. */

@@ -2,6 +2,7 @@ import type { ReactionType, StatKey } from "@/domain/enums";
 import { STELLAR_REACTIONS } from "../constants";
 import type { CalcContext, DamageTag, DisplayPart } from "../types";
 import {
+  enemyResMultiplier,
   resolveEnemyRes,
   resolvePolestarElementDmgBonus,
   resolveStellarAttachHits,
@@ -233,15 +234,7 @@ export abstract class DamageFormula {
 
   protected computeResMult(stats: StatSheet, ctx: CalcContext): number {
     const resReduction = stats.get("resReduction%", this.tag);
-    const effectiveRes = resolveEnemyRes(ctx, this.tag.element) - resReduction;
-
-    if (effectiveRes < 0) {
-      return 1 - effectiveRes / 2;
-    }
-    if (effectiveRes <= 0.75) {
-      return 1 - effectiveRes;
-    }
-    return 1 / (1 + 4 * effectiveRes);
+    return enemyResMultiplier(ctx, this.tag.element, resReduction);
   }
 
   protected computeCritMult(stats: StatSheet, _ctx: CalcContext): number {
@@ -322,12 +315,10 @@ export abstract class DamageFormula {
     const enemyRes = resolveEnemyRes(ctx, this.tag.element);
     // resReduction% is almost always a constant (team buff, not artifact stat).
     // Resolve the 3-way branch at compile time if possible.
-    if (resReduction.tag === "const") {
-      const effectiveRes = enemyRes - resReduction.value;
-      if (effectiveRes < 0) return E.const(1 - effectiveRes / 2);
-      if (effectiveRes <= 0.75) return E.const(1 - effectiveRes);
-      return E.const(1 / (1 + 4 * effectiveRes));
-    }
+    if (resReduction.tag === "const")
+      return E.const(
+        enemyResMultiplier(ctx, this.tag.element, resReduction.value)
+      );
     // Variable case (rare): build piecewise with min/max
     // effectiveRes = enemyRes - resReduction
     const effRes = E.add(E.const(enemyRes), E.mul(E.const(-1), resReduction));

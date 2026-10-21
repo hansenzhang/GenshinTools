@@ -211,11 +211,13 @@ function collectTasks(request: LineupSolverRequest): Task[] {
 /** Search and display contexts against the encounter's enemy. */
 function encounterContexts(
   setupConfig: TeamSetupConfig,
-  encounter: Encounter
+  encounter: Encounter,
+  clearSeconds: number
 ): { optimize: CalcContext; display: CalcContext } {
   const display = encounterCalcContext(
     encounter,
-    resolveCalcContext(setupConfig.damage?.calcContext)
+    resolveCalcContext(setupConfig.damage?.calcContext),
+    clearSeconds
   );
   const crTargets = Object.entries(setupConfig.charConfigs ?? {}).flatMap(
     ([charId, config]) =>
@@ -661,7 +663,11 @@ async function generateTaskCandidates(
   const { request, chars } = state;
   const account = request.accountData;
   const { template, teamComp, setupConfig } = task.team;
-  const contexts = encounterContexts(setupConfig, task.encounter);
+  const contexts = encounterContexts(
+    setupConfig,
+    task.encounter,
+    task.calibration.measuredSeconds
+  );
   const teamConfigs = buildTeamSlotConfigs(teamComp, setupConfig, account);
   const teamBuild = tryTeamBuild(teamConfigs, setupConfig, contexts.display);
   if (!teamBuild) return "no-objective";

@@ -763,10 +763,17 @@ function validItems<T extends z.ZodType>(schema: T) {
     .catch([]);
 }
 
+const ResPhaseSchema = z.object({
+  seconds: z.number().finite().positive(),
+  all: z.number().finite().nullable().catch(null),
+  res: EnemyResByElementSchema.catch({}),
+});
+
 const EncounterFields = {
   id: z.string(),
   enemyLevel: z.number().int().min(1).max(200).catch(100),
   res: EnemyResByElementSchema.catch({}),
+  resPhases: validItems(ResPhaseSchema),
   targets: z.string().catch(""),
   downtimeSeconds: z.number().finite().min(0).catch(0),
   timeBarSeconds: z.number().finite().positive().nullable().catch(null),
@@ -822,4 +829,5 @@ export const PersistedLineupStoreSchema = z.object({
   encounters: validItems(EncounterSchema),
   templates: validItems(TeamTemplateSchema),
   calibrations: validItems(CalibrationSchema),
+  resPhasesByBoss: z.record(z.string(), validItems(ResPhaseSchema)).catch({}),
 });
