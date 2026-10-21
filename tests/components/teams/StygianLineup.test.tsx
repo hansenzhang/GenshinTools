@@ -125,7 +125,13 @@ const RESULT = {
   issues: [],
   weaponCopies: {},
   setSlotCounts: {},
-  trace: { tasks: [], runs: [], inFlight: null, memberStats: {} },
+  trace: {
+    tasks: [],
+    runs: [],
+    inFlight: null,
+    memberStats: {},
+    diversify: [],
+  },
   partial: false,
 };
 

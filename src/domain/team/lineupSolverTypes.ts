@@ -341,6 +341,24 @@ export interface LineupTaskTrace {
 /** Final stats of a member, universal values under the encounter. */
 export type LineupMemberStats = Record<string, number>;
 
+/** Which diversify pass kept candidates clear of each other's gear: a
+ *  boss-by-boss lineup, weakest or strongest boss first, or the pairwise
+ *  fixes. */
+export type LineupDiversifyPass = "weakest-first" | "strongest-first" | "pairs";
+
+/** What one diversify pass of one encounter group found. */
+export interface LineupDiversifyTrace {
+  pass: LineupDiversifyPass;
+  encounterIds: string[];
+  /** A boss-by-boss lineup's candidates in pick order; shorter than the
+   *  group when a pick had no candidate clear of the earlier ones. Empty for
+   *  the pairwise fixes. */
+  lineupIds: string[];
+  /** Candidates its re-runs and weapon swaps gave, including ones an earlier
+   *  pass had already found. */
+  clearIds: string[];
+}
+
 export interface LineupSolverTrace {
   tasks: LineupTaskTrace[];
   runs: LineupRunTrace[];
@@ -348,6 +366,7 @@ export interface LineupSolverTrace {
   inFlight: LineupRunStart | null;
   /** Stats per candidate id, then per member. */
   memberStats: Record<string, Record<string, LineupMemberStats>>;
+  diversify: LineupDiversifyTrace[];
 }
 
 export interface LineupSolverResult {

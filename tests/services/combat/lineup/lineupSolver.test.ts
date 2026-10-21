@@ -536,6 +536,23 @@ describe("runLineupSolver for a Stygian run", () => {
     expect(result.candidates.some((c) => c.origin === "pieces-excluded")).toBe(
       true
     );
+    // Both boss-by-boss lineups are traced, each one that fits together.
+    const byId = new Map(result.candidates.map((c) => [c.id, c]));
+    const chains = result.trace.diversify.filter(
+      (entry) => entry.pass !== "pairs"
+    );
+    expect(chains.map((entry) => entry.pass)).toEqual([
+      "weakest-first",
+      "strongest-first",
+    ]);
+    for (const chain of chains) {
+      const lineup = chain.lineupIds.map((id) => byId.get(id)!);
+      expect(new Set(lineup.map((c) => c.encounterId))).toEqual(
+        new Set(["boss-1", "boss-2", "boss-3"])
+      );
+      expect(canFieldTogether(lineup, result.weaponCopies)).toBe(true);
+      for (const id of chain.clearIds) expect(byId.has(id)).toBe(true);
+    }
 
     const highs = await loadTestHighs();
     const calibrated = calibrateCandidates(

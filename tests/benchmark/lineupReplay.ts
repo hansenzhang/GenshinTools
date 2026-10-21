@@ -12,11 +12,14 @@
  * With `--levelling`, every team of each lineup also gets its levelling
  * advice (docs/design/lineup-solver.md, P5), weakest first, timed.
  * `--level-to-max` replays with pieces below max level scored as levelled.
+ * With `--diversify`, a Stygian run also compares each boss-by-boss lineup
+ * with the joint plan, and plans again without what one pass found (the P4
+ * comparison).
  *
  * Usage:
  *   npx tsx --tsconfig tsconfig.app.json tests/benchmark/lineupReplay.ts \
  *     --file <lineup-debug.json> [--no-run] [--budget-sec 30|0] [--trace]
- *     [--levelling] [--level-to-max] [--dump <replayed.json>]
+ *     [--levelling] [--level-to-max] [--diversify] [--dump <replayed.json>]
  *
  * Node has no Worker, so the optimizer runs its inline single-thread path.
  */
@@ -41,6 +44,7 @@ import type {
   CalibratedCandidate,
   LineupDebugExport,
   LineupDebugPlan,
+  LineupDiversifyPass,
   LineupRunTrace,
   LineupSolverRequest,
   LineupSolverResult,
@@ -74,6 +78,8 @@ function readExport(path: string): LineupDebugExport {
     throw new Error(
       `${path} is version ${data.version}; this script reads 2 and ${LINEUP_DEBUG_VERSION}.`
     );
+  // Exports before the diversify trace have none.
+  data.result.trace.diversify ??= [];
   return data;
 }
 
@@ -351,6 +357,80 @@ function printLevelling(
     }
 }
 
+/** Candidates a diversify pass made: re-runs and weapon swaps. A re-run
+ *  that matches a searched build reuses that candidate, which stays. */
+const isCleared = (candidate: CalibratedCandidate | undefined) =>
+  candidate?.origin === "pieces-excluded" ||
+  candidate?.origin === "weapon-swapped";
+
+/**
+ * The P4 comparison on a Stygian run: each boss-by-boss lineup (sequential,
+ * with set search) beside the joint plan, then the joint plan again without
+ * the candidates only the dropped passes found. Until done, runs are
+ * deterministic and the pairwise fixes are chosen before the chains, so
+ * dropping strongest-first (the later chain) is what a run without it would
+ * give. Strongest-first can pick what weakest-first found, so dropping
+ * weakest-first alone is approximate.
+ */
+async function printDiversify(
+  request: LineupSolverRequest,
+  result: LineupSolverResult,
+  calibrated: CalibratedCandidate[]
+): Promise<void> {
+  const passes = result.trace.diversify;
+  if (request.mode !== "stygian" || passes.length === 0) return;
+  const byId = new Map(calibrated.map((entry) => [entry.id, entry]));
+  const teams = (ids: readonly string[]) => {
+    const picked = ids
+      .map((id) => byId.get(id))
+      .filter((entry) => entry !== undefined);
+    const floor = Math.min(...picked.map((entry) => entry.margin));
+    return `floor ×${floor.toFixed(3)} — ${picked
+      .map(
+        (entry) =>
+          `${templateLabel(request, entry.templateId)} ${entry.id} ×${entry.margin.toFixed(3)}`
+      )
+      .join(" · ")}`;
+  };
+  console.log("\n## Diversify passes");
+  for (const entry of passes)
+    console.log(
+      entry.pass === "pairs"
+        ? `  pairs: ${entry.clearIds.length} candidates`
+        : `  ${entry.pass}: ${entry.lineupIds.length < entry.encounterIds.length ? "incomplete, " : ""}${teams(entry.lineupIds)} (${entry.clearIds.length} candidates)`
+    );
+  const kinds = [...new Set(passes.map((entry) => entry.pass))];
+  const variants: [string, LineupDiversifyPass[]][] = [
+    ["joint, every pass", []],
+    ...kinds.map((kind): [string, LineupDiversifyPass[]] => [
+      `joint without ${kind}`,
+      [kind],
+    ]),
+    ["joint, pairs only", ["weakest-first", "strongest-first"]],
+    ["joint, no diversify", kinds],
+  ];
+  for (const [label, dropped] of variants) {
+    const kept = new Set(
+      passes
+        .filter((entry) => !dropped.includes(entry.pass))
+        .flatMap((entry) => entry.clearIds)
+    );
+    const removed = new Set(
+      passes
+        .filter((entry) => dropped.includes(entry.pass))
+        .flatMap((entry) => entry.clearIds)
+        .filter((id) => !kept.has(id) && isCleared(byId.get(id)))
+    );
+    const pool = calibrated.filter((entry) => !removed.has(entry.id));
+    const planned = await plan(request, result, pool);
+    const best =
+      planned.mode === "stygian" ? planned.result?.plans[0] : undefined;
+    console.log(
+      `  ${label} (${pool.length} candidates): ${best ? teams(Object.values(best.candidateIds)) : "no lineup"}`
+    );
+  }
+}
+
 function printRun(
   title: string,
   request: LineupSolverRequest,
@@ -415,8 +495,15 @@ async function main(): Promise<void> {
     weaponStatsResource.preload(),
   ]);
   const levelling = args.levelling === "true";
+  const diversifying = args.diversify === "true";
   if (levelling)
     printLevelling(exported.request, exported.calibrated, exported.plan, chars);
+  if (diversifying)
+    await printDiversify(
+      exported.request,
+      exported.result,
+      exported.calibrated
+    );
   if (args["no-run"] === "true") return;
 
   // --budget-sec 0 runs every finalist until done.
@@ -458,6 +545,7 @@ async function main(): Promise<void> {
     null
   );
   if (levelling) printLevelling(request, calibrated, replayed, chars);
+  if (diversifying) await printDiversify(request, finished, calibrated);
   if (args.dump)
     writeFileSync(
       args.dump,

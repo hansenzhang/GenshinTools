@@ -807,3 +807,20 @@ tiers; advice requests for every team of the lineup.
     slots still counts against those.
   - Margins of a levelled run are means; the advice gives each piece's spread, one at a time.
   - Outside the advisor, Lv 89 still counts as 90 (decided with the user).
+
+## P4 comparison (2026-10-21)
+
+The question from testing: does building the boss-by-boss lineup weakest boss first or strongest
+first make a difference, and does the joint plan need both?
+
+- **Trace**: diversify records each pass per encounter group in `trace.diversify`
+  (`LineupDiversifyTrace`): the weakest-first and strongest-first lineups in pick order, and
+  the candidates each pass's re-runs and weapon swaps gave, including ones an earlier pass had
+  found; the pairwise fixes are one more pass. The field is new in debug export version 3; the
+  replay reads older exports as having none.
+- **Replay**: `tests/benchmark/lineupReplay.ts --diversify` prints each boss-by-boss lineup's
+  margins and floor (the study's "sequential with set search", both orders) beside the joint
+  leximin plan, then plans again without the candidates only one pass found. Run until done
+  (`--budget-sec 0`), runs are deterministic and the pairwise fixes are picked before the chains,
+  so dropping strongest-first matches a run without it; strongest-first can pick what
+  weakest-first found, so dropping weakest-first alone is approximate.

@@ -80,6 +80,7 @@ import {
 import type {
   CandidateOrigin,
   LineupCandidate,
+  LineupDiversifyPass,
   LineupIssue,
   LineupIssueReason,
   LineupMemberStats,
@@ -550,6 +551,7 @@ function snapshot(state: SolverState, partial: boolean): LineupSolverResult {
       runs: [...state.trace.runs],
       inFlight: state.trace.inFlight,
       memberStats: { ...state.trace.memberStats },
+      diversify: [...state.trace.diversify],
     },
     partial,
   };
@@ -1154,11 +1156,13 @@ function combined(candidates: readonly LineupCandidate[]): LineupCandidate {
 /**
  * The candidate kept clear of `other`'s pieces (re-run) and of the weapon
  * copies it needs (swapped). Null when a clear version cannot be found.
+ * Candidates the re-run and swap give are added to `found`.
  */
 async function keepClear(
   state: SolverState,
   candidate: LineupCandidate,
-  other: LineupCandidate
+  other: LineupCandidate,
+  found: Set<string>
 ): Promise<LineupCandidate | null> {
   const source = state.sources.get(candidate.id);
   if (!source) return null;
@@ -1177,12 +1181,16 @@ async function keepClear(
     if (!state.reruns.has(key))
       state.reruns.set(key, await rerunWithout(state, source, excluded));
     clear = state.reruns.get(key) ?? null;
+    if (clear) found.add(clear.id);
   }
   if (!clear) return null;
-  return findContestedGear(clear, other, state.weaponCopies).weaponIds.length >
-    0
-    ? swapContestedWeapons(state, clear, other)
-    : clear;
+  if (
+    findContestedGear(clear, other, state.weaponCopies).weaponIds.length === 0
+  )
+    return clear;
+  const swapped = swapContestedWeapons(state, clear, other);
+  if (swapped) found.add(swapped.id);
+  return swapped;
 }
 
 /**
@@ -1226,15 +1234,16 @@ function conflictingPairs(
  * each one's best strength: every pick is the strongest candidate sharing no
  * character with the earlier picks, kept clear of their gear. A pick also
  * leaves alone characters every candidate of a later encounter needs, when
- * it can.
+ * it can. Returns the lineup, shorter than the group when a pick fails.
  */
 async function chainLineup(
   state: SolverState,
   group: readonly Encounter[],
   strength: (candidate: LineupCandidate) => number,
   weakestFirst: boolean,
-  step: () => void
-): Promise<void> {
+  step: () => void,
+  found: Set<string>
+): Promise<LineupCandidate[]> {
   const on = (encounterId: string) =>
     state.candidates.filter(
       (candidate) => candidate.encounterId === encounterId
@@ -1279,16 +1288,17 @@ async function chainLineup(
       lineup.flatMap((chosen) => chosen.members.map((member) => member.charId))
     );
     const candidate = pick(index, taken);
-    if (!candidate) return;
+    if (!candidate) return lineup;
     if (lineup.length === 0) {
       lineup.push(candidate);
       continue;
     }
     step();
-    const clear = await keepClear(state, candidate, combined(lineup));
-    if (!clear) return;
+    const clear = await keepClear(state, candidate, combined(lineup), found);
+    if (!clear) return lineup;
     lineup.push(clear);
   }
+  return lineup;
 }
 
 /**
@@ -1330,13 +1340,41 @@ async function diversify(
   const step = () => progress(done++, total);
 
   for (const [index, group] of groups.entries()) {
+    const record = (
+      pass: LineupDiversifyPass,
+      lineup: readonly LineupCandidate[],
+      found: ReadonlySet<string>
+    ) =>
+      state.trace.diversify.push({
+        pass,
+        encounterIds: group.map((encounter) => encounter.id),
+        lineupIds: lineup.map((candidate) => candidate.id),
+        clearIds: [...found],
+      });
     if (group.length >= 3)
-      for (const weakestFirst of [true, false])
-        await chainLineup(state, group, strength, weakestFirst, step);
+      for (const weakestFirst of [true, false]) {
+        const found = new Set<string>();
+        const lineup = await chainLineup(
+          state,
+          group,
+          strength,
+          weakestFirst,
+          step,
+          found
+        );
+        record(
+          weakestFirst ? "weakest-first" : "strongest-first",
+          lineup,
+          found
+        );
+      }
+    if (fixes[index].length === 0) continue;
+    const found = new Set<string>();
     for (const [candidate, other] of fixes[index]) {
       step();
-      await keepClear(state, candidate, other);
+      await keepClear(state, candidate, other, found);
     }
+    record("pairs", [], found);
   }
 }
 
@@ -1394,7 +1432,13 @@ export async function runLineupSolver(
     sources: new Map(),
     byGear: new Map(),
     reruns: new Map(),
-    trace: { tasks: [], runs: [], inFlight: null, memberStats: {} },
+    trace: {
+      tasks: [],
+      runs: [],
+      inFlight: null,
+      memberStats: {},
+      diversify: [],
+    },
   };
 
   for (const [index, task] of tasks.entries()) {
