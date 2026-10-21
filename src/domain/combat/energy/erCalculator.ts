@@ -943,7 +943,7 @@ function collectFlatEventsAt(
   if (act.action === "PA") {
     for (const tm of team) {
       const twe = tm.weaponId ? weaponEnergyById[tm.weaponId] : undefined;
-      if (!twe || twe.energy.effect !== "flatEnergy") continue;
+      if (twe?.energy.effect !== "flatEnergy") continue;
       if (twe.energy.trigger !== "partyPlunge") continue;
       out.push({
         recipientId: tm.id,

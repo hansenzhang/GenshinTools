@@ -506,7 +506,7 @@ export function migrateTeamStore(
           if (!tl) return tl;
           // biome-ignore lint/suspicious/noExplicitAny: legacy action shape
           const actions = (tl.actions ?? []).map((a: any) => {
-            if (!a || a.action !== "grantEnergy" || !a.energyGrants) return a;
+            if (a?.action !== "grantEnergy" || !a.energyGrants) return a;
             const widened: Record<string, { flat?: number; percent?: number }> =
               {};
             for (const [cid, val] of Object.entries(a.energyGrants)) {

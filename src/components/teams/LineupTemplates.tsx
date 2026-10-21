@@ -153,7 +153,6 @@ function FlexSlots({
           const alternatives = template.flexBySlot[slot] ?? [];
           return (
             <div
-              // biome-ignore lint/suspicious/noArrayIndexKey: team slots are positional
               key={slot}
               className="flex min-w-0 items-start gap-1.5 rounded-md border border-foreground/15 bg-background/30 p-1.5"
             >
