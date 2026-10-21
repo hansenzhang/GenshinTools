@@ -206,7 +206,7 @@ describe("planStygianRun", () => {
     expect(twoCopies.binding).toContainEqual({
       kind: "weapon",
       id: "favonius_sword",
-      marginWithout: 1.3,
+      marginWithout: expect.closeTo(1.3, 6),
     });
   });
 

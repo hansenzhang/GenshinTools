@@ -488,6 +488,14 @@ Found in the same replay:
   weakest boss rises to ×0.528: Sandrone ×0.914, Mizuki with Faruzan (Mizuki in Instructor)
   ×0.881, Lunar with Sucrose ×0.528.
 
+- **HiGHS presolve misreported a feasible plan as infeasible.** Replaying the export with RES
+  phases, leximin level 2 came back infeasible although the level-1 optimum satisfies every row.
+  HiGHS 1.15.3 logged "Solution with objective 1.38551 has untransformed violations: row = 1"
+  for every solution and reported the model infeasible; with presolve off it is optimal at the
+  same objective. Any run could hit this and show no lineup. `solveMilp` now turns presolve off.
+  A whole plan (20 solves with binding items) took 92–126 ms with presolve and takes 152–199 ms
+  without. The failing model is a test fixture.
+
 ## RES phases (design, 2026-10-21)
 
 Stygian bosses change RES during a fight: the Domovoy Sculptor starts at 90% and loses 20% per

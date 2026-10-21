@@ -36,14 +36,23 @@ export function writeLpModel(model: MilpModel): string {
   return lines.join("\n");
 }
 
-/** Solves the model with a loaded HiGHS runtime. */
+/**
+ * Solves the model with a loaded HiGHS runtime. Presolve is off: in HiGHS
+ * 1.15.3 it can map every solution of a feasible lineup model back to a
+ * violated row and report it infeasible. Lineup models are a few hundred
+ * variables, so a run's solves take about 50% longer, still well under a
+ * second in all.
+ */
 export function solveMilp(
   highs: Pick<LegacyHighs, "solve">,
   model: MilpModel
 ): MilpSolution {
   let result: ReturnType<LegacyHighs["solve"]>;
   try {
-    result = highs.solve(writeLpModel(model), { output_flag: false });
+    result = highs.solve(writeLpModel(model), {
+      output_flag: false,
+      presolve: "off",
+    });
   } catch (error) {
     return {
       status: "failed",

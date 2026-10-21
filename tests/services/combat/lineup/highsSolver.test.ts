@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { MilpModel } from "@/domain/combat/lineup/milpModel";
 import { solveMilp, writeLpModel } from "@/services/combat/lineup/highsSolver";
+import presolveInfeasible from "../../../fixtures/milpPresolveInfeasible.json";
 import { loadTestHighs } from "../../../helpers/highs";
 
 const highs = await loadTestHighs();
@@ -60,5 +61,18 @@ describe("solveMilp", () => {
         ],
       })
     ).toEqual({ status: "infeasible" });
+  });
+
+  it("solves a lineup model that HiGHS's presolve misreports as infeasible", () => {
+    // Leximin level 2 of a real Stygian run, feasible by construction: the
+    // level-1 optimum satisfies every row. HiGHS 1.15.3's presolve maps each
+    // solution back to a violated row and reports the model infeasible.
+    const solution = solveMilp(
+      highs,
+      presolveInfeasible as unknown as MilpModel
+    );
+    expect(solution.status).toBe("optimal");
+    if (solution.status === "optimal")
+      expect(solution.objective).toBeCloseTo(1.3855, 3);
   });
 });
