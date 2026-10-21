@@ -22,6 +22,7 @@ import {
   LINEUP_TIME_BUDGET_OPTIONS_SEC,
 } from "@/domain/combat/lineup/constants";
 import { buildLineupDebugExport } from "@/domain/combat/lineup/debugExport";
+import { maxPieceLevel } from "@/domain/combat/lineup/levelling";
 import { allSlots } from "@/domain/enums";
 import { runTriage } from "@/domain/game-account/triage/triageEngine";
 import type { ArtifactData } from "@/domain/models";
@@ -136,7 +137,8 @@ export function useTemplateNames(): TeamNames {
 export function useLineupJob(
   mode: EncounterMode,
   timeBudgetSec: number | null,
-  keepersOnly: boolean
+  keepersOnly: boolean,
+  levelToMax: boolean
 ) {
   const allEncounters = useLineupStore((s) => s.encounters);
   const templates = useLineupStore((s) => s.templates);
@@ -227,6 +229,7 @@ export function useLineupJob(
         comboOverrides,
         timeBudgetSec,
         keeperArtifactIds,
+        levelToMax,
       }),
     [
       accountKey,
@@ -236,6 +239,7 @@ export function useLineupJob(
       comboOverrides,
       timeBudgetSec,
       keeperArtifactIds,
+      levelToMax,
     ]
   );
   const solver = useLineupSolver(mode, signature);
@@ -259,6 +263,7 @@ export function useLineupJob(
             comboOverrides,
             timeBudgetSec,
             keeperArtifactIds,
+            levelToMax,
           }
         : null,
     [
@@ -270,6 +275,7 @@ export function useLineupJob(
       comboOverrides,
       timeBudgetSec,
       keeperArtifactIds,
+      levelToMax,
     ]
   );
   const artifacts = useMemo(
@@ -310,6 +316,9 @@ export function useLineupJob(
     calibrated,
     /** The account's pieces, for filling members that take any pieces. */
     artifacts,
+    /** The shown run scores pieces below max level as levelled: results
+     *  follow the signature, which includes it. */
+    levelToMax,
     hasAccount: accountData != null,
     canRun: request != null && teams.length > 0,
     run,
@@ -366,23 +375,27 @@ function progressShare(progress: LineupSolverProgress | null): number {
   return (progress.task + stage) / (progress.tasks + 1);
 }
 
-/** Limits members whose pieces matter to pieces worth keeping. */
-export function KeepersToggle({
+/** A run option shown as a checkbox: Kept artifacts only, Level artifacts
+ *  to max. */
+export function RunOptionToggle({
+  label,
+  tip,
   checked,
   disabled,
   onChange,
 }: {
+  label: string;
+  tip: string;
   checked: boolean;
   disabled: boolean;
   onChange: (checked: boolean) => void;
 }) {
-  const { t } = useLanguage();
   const id = useId();
   return (
     <label
       htmlFor={id}
       className="flex items-center gap-2 text-xs md:text-sm"
-      title={t.ui("lineup.keepersOnlyTip")}
+      title={tip}
     >
       <Checkbox
         id={id}
@@ -391,9 +404,18 @@ export function KeepersToggle({
         disabled={disabled}
         onCheckedChange={(next) => onChange(next === true)}
       />
-      {t.ui("lineup.keepersOnly")}
+      {label}
     </label>
   );
+}
+
+/** A piece's level, with the max level the run scored it at when it
+ *  levelled pieces whose stats matter. */
+function pieceLevelLabel(artifact: ArtifactData, levelled: boolean): string {
+  const max = maxPieceLevel(artifact.rarity);
+  return levelled && max != null && artifact.level < max
+    ? `+${artifact.level}→${max}`
+    : `+${artifact.level}`;
 }
 
 /** Select value for running every finalist until its search finishes. */
@@ -577,7 +599,13 @@ export function LineupRunControls({
   );
 }
 
-function CandidateMembers({ candidate }: { candidate: CalibratedCandidate }) {
+function CandidateMembers({
+  candidate,
+  levelled,
+}: {
+  candidate: CalibratedCandidate;
+  levelled: boolean;
+}) {
   const { t } = useLanguage();
   return (
     <div className="flex flex-col gap-1.5">
@@ -604,7 +632,10 @@ function CandidateMembers({ candidate }: { candidate: CalibratedCandidate }) {
                     artifactSetId={artifact.setKey}
                     slot={slot}
                     rarity={artifact.rarity}
-                    level={`+${artifact.level}`}
+                    level={pieceLevelLabel(
+                      artifact,
+                      levelled && !member.anyPieces
+                    )}
                     size="xs"
                   />
                 </ArtifactDataHoverCard>
@@ -642,12 +673,15 @@ export function CandidateDetail({
   bestAlone,
   issues,
   names,
+  levelled,
 }: {
   label: string;
   candidate: CalibratedCandidate | null;
   bestAlone: number | null;
   issues: string[];
   names: TeamNames;
+  /** The run scored pieces below max level as levelled. */
+  levelled: boolean;
 }) {
   const { t } = useLanguage();
   const change = candidate ? (candidate.ratio - 1) * 100 : 0;
@@ -702,7 +736,7 @@ export function CandidateDetail({
               <span>{t.ui("lineup.originWeapon")}</span>
             )}
           </div>
-          <CandidateMembers candidate={candidate} />
+          <CandidateMembers candidate={candidate} levelled={levelled} />
         </>
       ) : (
         <ul className="space-y-0.5 text-xs text-muted-foreground md:text-sm">

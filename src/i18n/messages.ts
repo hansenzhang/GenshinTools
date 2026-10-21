@@ -2320,6 +2320,11 @@ export const i18nUiData = {
       en: "Only locked artifacts and those Triage recommends locking. Characters whose stats don't change damage can still wear any.",
       zh: "只使用已上锁和整理建议上锁的圣遗物。属性不影响伤害的角色仍可穿任意圣遗物。",
     },
+    levelToMax: { en: "Level artifacts to max", zh: "按满级圣遗物计算" },
+    levelToMaxTip: {
+      en: "Scores every 4★ and 5★ artifact below max level as if levelled, with average substat rolls. Artifacts the lineup would level show their level now → max.",
+      zh: "把所有未满级的四星和五星圣遗物按强化满级计算，副词条按平均强化结果计入。阵容中需要强化的圣遗物显示为当前等级 → 满级。",
+    },
     untilDoneTip: {
       en: "Every search runs until it finishes. Large accounts can take a long time.",
       zh: "每次搜索都运行到结束为止，圣遗物较多时可能需要很久。",
@@ -2434,8 +2439,8 @@ export const i18nUiData = {
     },
     worthLevelling: { en: "Worth levelling", zh: "值得强化" },
     worthLevellingTip: {
-      en: "For the weakest team: per slot, the piece most likely to raise its damage by more than {0}% once levelled to max. Chances follow the game's roll odds, one piece at a time.",
-      zh: "针对最弱的队伍：每个部位强化满级后最有可能使伤害提升超过 {0}% 的圣遗物。概率按游戏的副词条强化规则计算，每次只考虑更换一件。",
+      en: "For each team, weakest first: per slot, the piece most likely to raise its damage by more than {0}% once levelled to max. Smaller gains are greyed out. Chances follow the game's roll odds, one piece at a time.",
+      zh: "按队伍从最弱开始：每个部位强化满级后最有可能使伤害提升超过 {0}% 的圣遗物，提升更小的显示为灰色。概率按游戏的副词条强化规则计算，每次只考虑更换一件。",
     },
     levellingRunning: {
       en: "Working out what to level…",
@@ -2446,14 +2451,20 @@ export const i18nUiData = {
       zh: "无法为该队伍计算强化建议。",
     },
     noLevelling: {
-      en: "No piece is likely to raise its damage by more than {0}%.",
-      zh: "没有圣遗物有望使伤害提升超过 {0}%。",
+      en: "No piece is expected to raise its damage.",
+      zh: "没有圣遗物有望提升伤害。",
     },
+    asIs: { en: "as is", zh: "当前" },
     insteadOf: { en: "instead of", zh: "替换" },
     beatChance: { en: "{0}% chance", zh: "{0}% 概率" },
     beatChanceTip: {
       en: "Chance it raises the team's damage by more than {0}%",
       zh: "使队伍伤害提升超过 {0}% 的概率",
+    },
+    gainChance: { en: "{0}% to gain", zh: "{0}% 概率提升" },
+    gainChanceTip: {
+      en: "Chance it raises the team's damage at all. It is unlikely to raise it by more than {0}%, which is within model error.",
+      zh: "使队伍伤害有所提升的概率。提升难以超过 {0}%，在模型误差范围内。",
     },
     expectedGain: { en: "+{0}% expected", zh: "预期 +{0}%" },
     expectedGainTip: {
@@ -2461,6 +2472,11 @@ export const i18nUiData = {
       zh: "平均提升；不如当前圣遗物的结果计为无变化",
     },
     talentsAndLevels: { en: "Talents and levels", zh: "天赋与等级" },
+    levelAssumed: { en: "already in margins", zh: "已计入余量" },
+    levelAssumedTip: {
+      en: "The character is Lv{0} on your account, but lineups score Lv{1}, so margins already include this gain.",
+      zh: "该角色在账号中为 {0} 级，但阵容按 {1} 级计算，余量已包含这部分提升。",
+    },
     talentsAndLevelsTip: {
       en: "One level up each, for the same team. Gains under {0}% are within model error.",
       zh: "每项各升一级，针对同一队伍。低于 {0}% 的提升在模型误差范围内。",

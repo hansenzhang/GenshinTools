@@ -26,12 +26,12 @@ import { LINEUP_HEADER_CLS, LINEUP_SECTION_CLS } from "./LineupEncounters";
 import {
   BindingList,
   CandidateDetail,
-  KeepersToggle,
   LINEUP_LABEL_CLS,
   LINEUP_SELECT_CLS,
   LineupRow,
   LineupRunControls,
   MarginValue,
+  RunOptionToggle,
   type TeamNames,
   TimeBudgetSelect,
   useIssueLines,
@@ -43,10 +43,12 @@ import {
 let sessionSettings: {
   timeBudgetSec: number | null;
   keepersOnly: boolean;
+  levelToMax: boolean;
   timerRule: AbyssTimerRule;
 } = {
   timeBudgetSec: LINEUP_DEFAULT_TIME_BUDGET_SEC,
   keepersOnly: true,
+  levelToMax: false,
   timerRule: "per-half",
 };
 
@@ -120,6 +122,7 @@ function ChamberCard({
               bestAlone={plan.bestAlone.first}
               issues={issuesFor(plan.firstEncounterId)}
               names={names}
+              levelled={job.levelToMax}
             />
           )}
           {plan.secondEncounterId && (
@@ -129,6 +132,7 @@ function ChamberCard({
               bestAlone={plan.bestAlone.second}
               issues={issuesFor(plan.secondEncounterId)}
               names={names}
+              levelled={job.levelToMax}
             />
           )}
         </div>
@@ -186,7 +190,8 @@ export function AbyssLineups() {
   const job = useLineupJob(
     "abyss",
     settings.timeBudgetSec,
-    settings.keepersOnly
+    settings.keepersOnly,
+    settings.levelToMax
   );
   const { encounters, calibrations, calibrated } = job;
   const { result } = job.solver;
@@ -236,11 +241,22 @@ export function AbyssLineups() {
                   updateSettings({ ...settings, timeBudgetSec })
                 }
               />
-              <KeepersToggle
+              <RunOptionToggle
+                label={t.ui("lineup.keepersOnly")}
+                tip={t.ui("lineup.keepersOnlyTip")}
                 checked={settings.keepersOnly}
                 disabled={job.solver.isComputing}
                 onChange={(keepersOnly) =>
                   updateSettings({ ...settings, keepersOnly })
+                }
+              />
+              <RunOptionToggle
+                label={t.ui("lineup.levelToMax")}
+                tip={t.ui("lineup.levelToMaxTip")}
+                checked={settings.levelToMax}
+                disabled={job.solver.isComputing}
+                onChange={(levelToMax) =>
+                  updateSettings({ ...settings, levelToMax })
                 }
               />
               <div className="flex items-center gap-1">

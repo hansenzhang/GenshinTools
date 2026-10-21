@@ -274,6 +274,15 @@ describe("TransformFormula", () => {
     expect(dp.params.levelCoeff).toBeCloseTo(1446.853458);
     expect(dp.statValues.em).toBe(300);
   });
+
+  it("prices a level between tiers with its own multiplier", () => {
+    expect(formula.display(stats, 89, CTX).params.levelCoeff).toBeCloseTo(
+      1405.0974
+    );
+    expect(
+      formula.calc(stats, 89, CTX) / formula.calc(stats, 90, CTX)
+    ).toBeCloseTo(1405.0974 / 1446.853458, 9);
+  });
 });
 
 describe("LunarFormula", () => {

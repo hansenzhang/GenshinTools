@@ -40,6 +40,7 @@ import {
   charactersById,
 } from "@/domain/reference/catalog";
 import {
+  getCharacterLevelTier,
   resolveCharacterStats,
   resolveWeaponStats,
 } from "@/domain/reference/stats";
@@ -279,7 +280,10 @@ function buildIdleStatSheet(
   const baseEntries: StatEntry[] = [];
 
   try {
-    baseEntries.push(...resolveCharacterStats(charId, charLevel));
+    // Account levels are scored as their tier, as in team configs.
+    baseEntries.push(
+      ...resolveCharacterStats(charId, Number(getCharacterLevelTier(charLevel)))
+    );
   } catch {}
 
   if (weapon) {

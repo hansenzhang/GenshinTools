@@ -174,6 +174,8 @@ export interface LevellingPiece {
   toLevel: number;
   /** Chance the team's damage rises by more than the margin tie. */
   beatChance: number;
+  /** Chance the team's damage rises at all. */
+  gainChance: number;
   /** E[max(0, gain)]: the expected relative damage gain when a result
    *  worse than the current piece is not worn. */
   expectedGain: number;
@@ -189,12 +191,18 @@ export interface LevellingStep {
   to: number;
   /** Relative damage gain. */
   gain: number;
+  /** The lineup already scores the member at `to`: the account level is
+   *  below its tier (Lv 89 counts as 90), so margins include this gain. */
+  assumed: boolean;
 }
 
 export interface LevellingAdvice {
   candidateId: string;
+  /** The team's damage on its pieces as they are: the candidate's damage,
+   *  unless the run scored pieces as levelled. */
+  damage: number;
   /** Best option per member and slot, most likely to beat the current piece
-   *  first. */
+   *  first, then options under the tie by expected gain. */
   pieces: LevellingPiece[];
   /** Steps that raise damage, largest gain first. */
   steps: LevellingStep[];
@@ -236,6 +244,10 @@ export interface LineupSolverRequest {
    *  lock, or in a recorded build); absent uses every piece. Members whose
    *  pieces don't matter may always use any piece. */
   keeperArtifactIds?: string[];
+  /** Score every 4★ and 5★ piece below max level as levelled, with its
+   *  expected rolls; absent scores pieces as they are. Results still carry
+   *  the real pieces. */
+  levelToMax?: boolean;
 }
 
 /** Why a template's calibrated encounter produced no candidates. */

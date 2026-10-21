@@ -1,6 +1,5 @@
 /**
- * Levelling advice for a lineup's weakest team (docs/design/lineup-solver.md,
- * P5). The candidate's scoring input is rebuilt from its run's request as the
+ * Levelling advice for a lineup's team (docs/design/lineup-solver.md, P5). The candidate's scoring input is rebuilt from its run's request as the
  * solver built it: the encounter's enemy, the template's rotation for the
  * candidate's members, and the candidate's weapons and sets.
  */
@@ -127,6 +126,12 @@ export function adviseCandidateLevelling(
     artifacts,
     reservedIds: new Set(request.others.flatMap(candidateArtifactIds)),
     bar: LINEUP_MARGIN_TIE_PERCENT / 100,
+    accountLevels: Object.fromEntries(
+      request.solver.accountData.characters.map((character) => [
+        character.key,
+        character.level,
+      ])
+    ),
   });
   return advice && { candidateId: request.candidate.id, ...advice };
 }

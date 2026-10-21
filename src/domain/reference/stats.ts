@@ -180,9 +180,53 @@ function parseWeaponSecondary(rawValue: string): number {
   return Number.parseFloat(rawValue);
 }
 
+/** Stats that grow with level inside an ascension phase. */
+const GROWING_STATS = new Set(["baseHp", "baseAtk", "baseDef"]);
+
+/**
+ * A level between two tiers: HP, ATK and DEF grow linearly from the tier
+ * below, as the game's growth curves do within an ascension phase; the
+ * ascension stat is the tier below's. The 70 and 80 rows straddle an
+ * ascension, so 71–79 grow at the 80 → 90 rate. Null at a tier, below 70 or
+ * past 100.
+ */
+function offTierLevelStats(
+  data: CharacterStatsMap,
+  charId: string,
+  level: number
+): CharacterLevelStats | null {
+  const tiers = CHARACTER_LEVEL_TIERS.map(Number);
+  const upper = tiers.findIndex((tier) => tier >= level);
+  if (upper <= 0 || tiers[upper] === level) return null;
+  const lowerTier = CHARACTER_LEVEL_TIERS[upper - 1];
+  const [slopeFrom, slopeTo] =
+    lowerTier === "70"
+      ? (["80", "90"] as const)
+      : [lowerTier, CHARACTER_LEVEL_TIERS[upper]];
+  const below = getCharacterLevelStats(data, charId, lowerTier);
+  const from = getCharacterLevelStats(data, charId, slopeFrom);
+  const to = getCharacterLevelStats(data, charId, slopeTo);
+  if (!below || !from || !to) return null;
+  const steps =
+    (level - Number(lowerTier)) / (Number(slopeTo) - Number(slopeFrom));
+  return Object.fromEntries(
+    Object.entries(below).map(([key, raw]) => {
+      const start = raw === undefined ? undefined : parseStatValue(raw);
+      const stat = key as BaseStat;
+      if (start === undefined || !GROWING_STATS.has(stat)) return [key, raw];
+      const rise =
+        parseStatValue(to[stat] ?? "0") - parseStatValue(from[stat] ?? "0");
+      return [key, String(start + rise * steps)];
+    })
+  );
+}
+
 /**
  * Build StatEntry[] from character_stats.json for a given character.
- * Level is mapped to tier (70/80/90/95/100). Includes stat baselines (5% CR, 50% CD, 100% ER).
+ * A tier level (70/80/90/95/100) reads its row; a level between two tiers
+ * grows from the tier below (`offTierLevelStats`); levels below 70 read the
+ * 70 row. Callers that score account levels as their tier round first. Includes
+ * stat baselines (5% CR, 50% CD, 100% ER).
  * Requires character stats to be preloaded (call ``characterStatsResource.preload()`` first).
  */
 export function resolveCharacterStats(
@@ -195,7 +239,9 @@ export function resolveCharacterStats(
       "Character stats not loaded; await characterStatsResource.preload() first."
     );
   const tier = getCharacterLevelTier(charLevel);
-  const levelStats = getCharacterLevelStats(statsData, charId, tier);
+  const levelStats =
+    offTierLevelStats(statsData, charId, charLevel) ??
+    getCharacterLevelStats(statsData, charId, tier);
   if (!levelStats)
     throw new Error(`No character stats for: ${charId} at tier ${tier}`);
 

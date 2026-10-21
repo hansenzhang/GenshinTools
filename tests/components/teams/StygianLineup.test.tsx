@@ -33,7 +33,11 @@ vi.mock("@/hooks/useLineupSolver", () => ({
 vi.mock("@/hooks/useLevellingAdvice", () => ({
   useLevellingAdvice: (request: LevellingRequest | null) => {
     mocks.levellingRequests.push(request);
-    return mocks.levelling ?? { advice: null, error: null, isComputing: false };
+    // The advice answers its own team's request only.
+    return mocks.levelling &&
+      request?.candidate.id === mocks.levelling.advice?.candidateId
+      ? mocks.levelling
+      : { advice: null, error: null, isComputing: false };
   },
 }));
 vi.mock("@/hooks/useStygianPlan", () => ({
@@ -204,6 +208,12 @@ const sands = (id: string, level: number): ArtifactData => ({
   substats: { cr: 3.5 },
 });
 
+const goblet = (id: string, level: number): ArtifactData => ({
+  ...sands(id, level),
+  slotKey: "goblet",
+  mainStatKey: "pyro%",
+});
+
 describe("StygianLineup", () => {
   it("solves the run from candidates with current margins", () => {
     seed();
@@ -257,7 +267,7 @@ describe("StygianLineup", () => {
     expect(screen.queryByText("Hardest to lose")).not.toBeInTheDocument();
   });
 
-  it("advises what to level for the weakest boss's team", () => {
+  it("advises what to level for every team, weakest first", () => {
     seed();
     useTestAccount();
     mocks.plan = {
@@ -278,6 +288,7 @@ describe("StygianLineup", () => {
     mocks.levelling = {
       advice: {
         candidateId: "c2",
+        damage: 0.72,
         pieces: [
           {
             charId: "diluc",
@@ -286,21 +297,52 @@ describe("StygianLineup", () => {
             replaces: sands("worn", 20),
             toLevel: 20,
             beatChance: 0.87,
+            gainChance: 0.95,
             expectedGain: 0.062,
+          },
+          {
+            charId: "diluc",
+            slot: "goblet",
+            artifact: goblet("small", 4),
+            replaces: goblet("small", 4),
+            toLevel: 20,
+            beatChance: 0,
+            gainChance: 1,
+            expectedGain: 0.019,
           },
         ],
         steps: [
-          { charId: "diluc", kind: "skill", from: 9, to: 10, gain: 0.034 },
-          { charId: "diluc", kind: "level", from: 90, to: 95, gain: 0.01 },
+          {
+            charId: "diluc",
+            kind: "skill",
+            from: 9,
+            to: 10,
+            gain: 0.034,
+            assumed: false,
+          },
+          {
+            charId: "diluc",
+            kind: "level",
+            from: 89,
+            to: 90,
+            gain: 0.01,
+            assumed: true,
+          },
         ],
       },
       error: null,
       isComputing: false,
     };
     render(<StygianLineup />);
-    const request = mocks.levellingRequests.at(-1);
-    expect(request?.candidate.id).toBe("c2");
-    expect(request?.others.map((entry) => entry.id).sort()).toEqual([
+    // One request per team, weakest first, each with the others' pieces
+    // reserved.
+    const requests = mocks.levellingRequests.slice(-3);
+    expect(requests.map((entry) => entry?.candidate.id)).toEqual([
+      "c2",
+      "c1",
+      "c3",
+    ]);
+    expect(requests[0]?.others.map((entry) => entry.id).sort()).toEqual([
       "c1",
       "c3",
     ]);
@@ -311,9 +353,66 @@ describe("StygianLineup", () => {
     expect(screen.getByText("+6.2% expected")).toBeInTheDocument();
     // 0.88 · 1.062
     expect(screen.getByText("×0.93")).toBeInTheDocument();
+    // An option under the tie shows its chance of any gain, muted.
+    expect(screen.getByText("100% to gain")).toBeInTheDocument();
+    expect(screen.getByText("+1.9% expected")).toBeInTheDocument();
+    expect(screen.queryByText("0% chance")).not.toBeInTheDocument();
     expect(screen.getByText("Talents and levels")).toBeInTheDocument();
     expect(screen.getByText(/Skill 9 → 10/)).toBeInTheDocument();
-    expect(screen.getByText(/Lv90 → Lv95/)).toBeInTheDocument();
+    expect(screen.getByText(/Lv89 → Lv90/)).toBeInTheDocument();
+    expect(screen.getByText("already in margins")).toBeInTheDocument();
+  });
+
+  it("levels pieces to max when asked, showing the level each is scored at", async () => {
+    const user = userEvent.setup();
+    seed();
+    useTestAccount();
+    const worn = { ...NO_PIECES, sands: sands("worn", 4) };
+    const [first, ...rest] = RESULT.candidates;
+    mocks.solver = {
+      ...mocks.solver!,
+      result: {
+        ...RESULT,
+        candidates: [
+          {
+            ...first,
+            members: [{ ...first.members[0], artifacts: worn }],
+          },
+          ...rest,
+        ],
+      },
+    };
+    mocks.plan = {
+      result: {
+        plans: [
+          {
+            kind: "leximin",
+            candidateIds: { b1: "c1", b2: "c2", b3: "c3" },
+            weakest: 0.88,
+          },
+        ],
+        missingEncounterIds: [],
+        binding: [],
+      },
+      error: null,
+      isSolving: false,
+    };
+    mocks.levelling = {
+      advice: { candidateId: "c2", damage: 0.6, pieces: [], steps: [] },
+      error: null,
+      isComputing: false,
+    };
+    render(<StygianLineup />);
+    expect(screen.getByText("+4")).toBeInTheDocument();
+    expect(mocks.levellingRequests.at(-1)?.solver.levelToMax).toBe(false);
+
+    await user.click(screen.getByLabelText("Level artifacts to max"));
+    expect(screen.getByText("+4→20")).toBeInTheDocument();
+    expect(mocks.levellingRequests.at(-1)?.solver.levelToMax).toBe(true);
+    // The advice's damage on the pieces as they are: 0.88 · 0.6 / 0.72.
+    expect(screen.getByText("×0.73")).toBeInTheDocument();
+    expect(screen.getByText("as is")).toBeInTheDocument();
+    await user.click(screen.getByLabelText("Level artifacts to max"));
   });
 
   it("waits for the run to finish before advising", () => {

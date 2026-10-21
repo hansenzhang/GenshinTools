@@ -49,6 +49,7 @@ import {
   SET_GENERATED_TIE_PERCENT,
   SET_MIN_RUN_MS,
 } from "@/domain/combat/lineup/constants";
+import { expectedLevelledPiece } from "@/domain/combat/lineup/levelling";
 import {
   pickBestOutcome,
   selectFinalists,
@@ -156,6 +157,9 @@ interface SolverState {
   setSlotCounts: Record<string, number>;
   /** Pieces members whose pieces matter may use; null: every piece. */
   keeperIds: ReadonlySet<string> | null;
+  /** With `levelToMax`, the real piece of each piece scored as levelled, by
+   *  id; results carry these. */
+  realPieces: ReadonlyMap<string, ArtifactData> | null;
   /** Real-inventory runs per task, and the time each gets (null: until
    *  done). */
   runCount: number;
@@ -479,9 +483,65 @@ function memberStats(
   }
 }
 
-function snapshot(state: SolverState, partial: boolean): LineupSolverResult {
+/**
+ * The account with every piece below max level at its expected levelled
+ * stats (`levelToMax`), and the real pieces of those it levelled, by id.
+ */
+function levelledAccount(account: AccountData): {
+  account: AccountData;
+  real: Map<string, ArtifactData>;
+} {
+  const real = new Map<string, ArtifactData>();
+  const level = (artifact: ArtifactData) => {
+    const levelled = expectedLevelledPiece(artifact);
+    if (levelled !== artifact) real.set(artifact.id, artifact);
+    return levelled;
+  };
   return {
-    candidates: [...state.candidates],
+    account: {
+      ...account,
+      characters: account.characters.map((character) => ({
+        ...character,
+        artifacts: Object.fromEntries(
+          Object.entries(character.artifacts).map(([slot, artifact]) => [
+            slot,
+            level(artifact),
+          ])
+        ),
+      })),
+      extraArtifacts: account.extraArtifacts.map(level),
+    },
+    real,
+  };
+}
+
+/** The candidate wearing the real pieces of those scored as levelled. */
+function withRealPieces(
+  candidate: LineupCandidate,
+  real: ReadonlyMap<string, ArtifactData>
+): LineupCandidate {
+  return {
+    ...candidate,
+    members: candidate.members.map((member) => ({
+      ...member,
+      artifacts: Object.fromEntries(
+        allSlots.map((slot) => {
+          const artifact = member.artifacts[slot];
+          return [slot, artifact ? (real.get(artifact.id) ?? artifact) : null];
+        })
+      ) as Record<Slot, ArtifactData | null>,
+    })),
+  };
+}
+
+function snapshot(state: SolverState, partial: boolean): LineupSolverResult {
+  const { realPieces } = state;
+  return {
+    candidates: realPieces
+      ? state.candidates.map((candidate) =>
+          withRealPieces(candidate, realPieces)
+        )
+      : [...state.candidates],
     issues: [...state.issues],
     weaponCopies: state.weaponCopies,
     setSlotCounts: state.setSlotCounts,
@@ -1269,11 +1329,16 @@ async function diversify(
 }
 
 export async function runLineupSolver(
-  request: LineupSolverRequest,
+  input: LineupSolverRequest,
   chars: CharacterStatsMap,
   weapons: WeaponStatsMap,
   report: Report
 ): Promise<void> {
+  // Levelled once here, so every step scores the same pieces.
+  const levelled = input.levelToMax ? levelledAccount(input.accountData) : null;
+  const request = levelled
+    ? { ...input, accountData: levelled.account }
+    : input;
   const tasks = collectTasks(request);
   if (tasks.length === 0) {
     report({ type: "error", reason: "no-calibrations" });
@@ -1309,6 +1374,7 @@ export async function runLineupSolver(
           ),
         ])
       : null,
+    realPieces: levelled?.real ?? null,
     runCount,
     runMs: budgetMs == null ? null : budgetMs / runCount,
     candidates: [],

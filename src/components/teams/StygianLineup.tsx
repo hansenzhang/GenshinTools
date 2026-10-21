@@ -19,10 +19,10 @@ import {
 import {
   BindingList,
   CandidateDetail,
-  KeepersToggle,
   LineupRow,
   LineupRunControls,
   MarginValue,
+  RunOptionToggle,
   TimeBudgetSelect,
   useIssueLines,
   useLineupJob,
@@ -32,6 +32,7 @@ import {
 /** Stygian lineup settings for this session. */
 let sessionTimeBudgetSec: number | null = LINEUP_DEFAULT_TIME_BUDGET_SEC;
 let sessionKeepersOnly = true;
+let sessionLevelToMax = false;
 
 export function StygianLineup() {
   const { t } = useLanguage();
@@ -39,7 +40,8 @@ export function StygianLineup() {
   const encounterLabel = useEncounterLabel();
   const [timeBudgetSec, setTimeBudgetSec] = useState(sessionTimeBudgetSec);
   const [keepersOnly, setKeepersOnly] = useState(sessionKeepersOnly);
-  const job = useLineupJob("stygian", timeBudgetSec, keepersOnly);
+  const [levelToMax, setLevelToMax] = useState(sessionLevelToMax);
+  const job = useLineupJob("stygian", timeBudgetSec, keepersOnly, levelToMax);
   const { encounters, calibrated } = job;
   const { result } = job.solver;
   const planRequest = useMemo<StygianPlanRequest | null>(
@@ -111,12 +113,24 @@ export function StygianLineup() {
                   setTimeBudgetSec(seconds);
                 }}
               />
-              <KeepersToggle
+              <RunOptionToggle
+                label={t.ui("lineup.keepersOnly")}
+                tip={t.ui("lineup.keepersOnlyTip")}
                 checked={keepersOnly}
                 disabled={job.solver.isComputing}
                 onChange={(checked) => {
                   sessionKeepersOnly = checked;
                   setKeepersOnly(checked);
+                }}
+              />
+              <RunOptionToggle
+                label={t.ui("lineup.levelToMax")}
+                tip={t.ui("lineup.levelToMaxTip")}
+                checked={levelToMax}
+                disabled={job.solver.isComputing}
+                onChange={(checked) => {
+                  sessionLevelToMax = checked;
+                  setLevelToMax(checked);
                 }}
               />
             </>
@@ -172,6 +186,7 @@ export function StygianLineup() {
                     bestAlone={bestAlone(encounter.id)}
                     issues={issuesFor(encounter.id)}
                     names={names}
+                    levelled={job.levelToMax}
                   />
                 ))}
               </div>

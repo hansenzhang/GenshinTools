@@ -9,13 +9,14 @@
  * in Node and prints the same view, so changes to the solver can be checked
  * against the user's own teams and account, run times included.
  *
- * With `--levelling`, each lineup's weakest team also gets its levelling
- * advice (docs/design/lineup-solver.md, P5), timed.
+ * With `--levelling`, every team of each lineup also gets its levelling
+ * advice (docs/design/lineup-solver.md, P5), weakest first, timed.
+ * `--level-to-max` replays with pieces below max level scored as levelled.
  *
  * Usage:
  *   npx tsx --tsconfig tsconfig.app.json tests/benchmark/lineupReplay.ts \
  *     --file <lineup-debug.json> [--no-run] [--budget-sec 30|0] [--trace]
- *     [--levelling] [--dump <replayed.json>]
+ *     [--levelling] [--level-to-max] [--dump <replayed.json>]
  *
  * Node has no Worker, so the optimizer runs its inline single-thread path.
  */
@@ -309,39 +310,45 @@ function printLevelling(
   debugPlan: LineupDebugPlan,
   chars: CharacterStatsMap
 ): void {
-  for (const lineup of lineups(debugPlan, calibrated)) {
-    const weakest = lineup.reduce((a, b) => (b.margin < a.margin ? b : a));
-    const start = performance.now();
-    const advice = adviseCandidateLevelling(
-      {
-        solver: request,
-        candidate: weakest,
-        others: lineup.filter((entry) => entry !== weakest),
-      },
-      chars
-    );
-    console.log(
-      `\n### Levelling for ${templateLabel(request, weakest.templateId)} (${weakest.id} ×${weakest.margin.toFixed(3)}) in ${seconds(performance.now() - start)}`
-    );
-    if (!advice) {
-      console.log("  the team could not be scored");
-      continue;
-    }
-    for (const piece of advice.pieces) {
-      const expected = weakest.margin * (1 + piece.expectedGain);
-      console.log(
-        `  ${piece.charId} ${piece.slot}: P ${percent(piece.beatChance)} · E +${percent(piece.expectedGain)} → ×${expected.toFixed(3)} · level ${pieceLabel(piece.artifact)} to +${piece.toLevel}`
+  for (const lineup of lineups(debugPlan, calibrated))
+    for (const team of [...lineup].sort((a, b) => a.margin - b.margin)) {
+      const start = performance.now();
+      const advice = adviseCandidateLevelling(
+        {
+          solver: request,
+          candidate: team,
+          others: lineup.filter((entry) => entry !== team),
+        },
+        chars
       );
-      if (piece.replaces && piece.replaces.id !== piece.artifact.id)
-        console.log(`      instead of ${pieceLabel(piece.replaces)}`);
-    }
-    if (advice.pieces.length === 0)
-      console.log("  no piece beats the current one");
-    for (const step of advice.steps)
+      const took = seconds(performance.now() - start);
+      if (!advice) {
+        console.log(
+          `\n### Levelling for ${templateLabel(request, team.templateId)} (${team.id}): the team could not be scored`
+        );
+        continue;
+      }
+      // The margin on the pieces as they are, below the plan's when the run
+      // scored pieces as levelled.
+      const margin = (team.margin * advice.damage) / team.damage;
       console.log(
-        `  ${step.charId} ${step.kind} ${step.from} → ${step.to}: +${percent(step.gain)}`
+        `\n### Levelling for ${templateLabel(request, team.templateId)} (${team.id} ×${team.margin.toFixed(3)}, as is ×${margin.toFixed(3)}) in ${took}`
       );
-  }
+      for (const piece of advice.pieces) {
+        const expected = margin * (1 + piece.expectedGain);
+        console.log(
+          `  ${piece.charId} ${piece.slot}: P ${percent(piece.beatChance)} · any gain ${percent(piece.gainChance)} · E +${percent(piece.expectedGain)} → ×${expected.toFixed(3)} · level ${pieceLabel(piece.artifact)} to +${piece.toLevel}`
+        );
+        if (piece.replaces && piece.replaces.id !== piece.artifact.id)
+          console.log(`      instead of ${pieceLabel(piece.replaces)}`);
+      }
+      if (advice.pieces.length === 0)
+        console.log("  no piece is expected to gain");
+      for (const step of advice.steps)
+        console.log(
+          `  ${step.charId} ${step.kind} ${step.from} → ${step.to}: +${percent(step.gain)}${step.assumed ? " (already in margins)" : ""}`
+        );
+    }
 }
 
 function printRun(
@@ -416,6 +423,8 @@ async function main(): Promise<void> {
   const budget = args["budget-sec"];
   const request: LineupSolverRequest = {
     ...exported.request,
+    levelToMax:
+      args["level-to-max"] === "true" || exported.request.levelToMax === true,
     timeBudgetSec:
       budget == null
         ? exported.request.timeBudgetSec

@@ -4,6 +4,7 @@ import { CharAvatar } from "@/components/shared/CharAvatar";
 import { ItemIcon } from "@/components/shared/ItemIcon";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { LINEUP_MARGIN_TIE_PERCENT } from "@/domain/combat/lineup/constants";
+import { beatsTie } from "@/domain/combat/lineup/levelling";
 import type { ArtifactData } from "@/domain/models";
 import type {
   CalibratedCandidate,
@@ -20,8 +21,11 @@ import {
   type useLineupJob,
 } from "./LineupResults";
 
-/** Talent and level steps shown. */
+/** Talent and level steps shown per team. */
 const STEPS_SHOWN = 6;
+
+/** Margins this close count as the same in the team's heading. */
+const SAME_MARGIN = 0.005;
 
 const percent = (share: number) => (share * 100).toFixed(1);
 
@@ -43,6 +47,8 @@ function PieceIcon({ artifact }: { artifact: ArtifactData }) {
   );
 }
 
+/** One slot's option: the chance to beat the tie, or, muted, the chance of
+ *  any gain when it cannot. */
 function PieceRow({
   piece,
   margin,
@@ -52,8 +58,14 @@ function PieceRow({
 }) {
   const { t } = useLanguage();
   const swapped = piece.replaces && piece.replaces.id !== piece.artifact.id;
+  const beats = beatsTie(piece);
   return (
-    <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
+    <div
+      className={cn(
+        "flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1",
+        !beats && "text-muted-foreground"
+      )}
+    >
       <span className="flex shrink-0 items-center gap-1">
         <CharAvatar charId={piece.charId} size={18} />
         <PieceIcon artifact={piece.artifact} />
@@ -68,12 +80,20 @@ function PieceRow({
         </span>
       )}
       <span className="ml-auto flex shrink-0 items-baseline gap-x-2 tabular-nums">
-        <span
-          className="font-semibold"
-          title={t.format("lineup.beatChanceTip", LINEUP_MARGIN_TIE_PERCENT)}
-        >
-          {t.format("lineup.beatChance", (piece.beatChance * 100).toFixed(0))}
-        </span>
+        {beats ? (
+          <span
+            className="font-semibold"
+            title={t.format("lineup.beatChanceTip", LINEUP_MARGIN_TIE_PERCENT)}
+          >
+            {t.format("lineup.beatChance", (piece.beatChance * 100).toFixed(0))}
+          </span>
+        ) : (
+          <span
+            title={t.format("lineup.gainChanceTip", LINEUP_MARGIN_TIE_PERCENT)}
+          >
+            {t.format("lineup.gainChance", (piece.gainChance * 100).toFixed(0))}
+          </span>
+        )}
         <span title={t.ui("lineup.expectedGainTip")}>
           {t.format("lineup.expectedGain", percent(piece.expectedGain))}
         </span>
@@ -103,48 +123,47 @@ function StepChip({ step }: { step: LevellingStep }) {
         "flex items-center gap-1",
         step.gain * 100 <= LINEUP_MARGIN_TIE_PERCENT && "text-muted-foreground"
       )}
+      title={
+        step.assumed
+          ? t.format("lineup.levelAssumedTip", step.from, step.to)
+          : undefined
+      }
     >
       <CharAvatar charId={step.charId} size={18} />
       {label}
       <span className="font-semibold tabular-nums">+{percent(step.gain)}%</span>
+      {step.assumed && (
+        <span className="text-muted-foreground">
+          {t.ui("lineup.levelAssumed")}
+        </span>
+      )}
     </span>
   );
 }
 
 /**
- * What to level for the lineup's weakest team (docs/design/lineup-solver.md,
- * P5): per slot the piece most likely to raise its damage past the margin
- * tie, then talent and level steps. Worked out once the run has finished,
- * and again only when the weakest team or its lineup changes.
+ * One team's advice. Keyed by the run's signature and the lineup's candidate
+ * ids, so editing a clear or bar keeps it: they change margins, not damage.
  */
-export function LevellingAdvice({
+function TeamAdvice({
   job,
-  lineup,
+  team,
+  otherIds,
   names,
 }: {
   job: ReturnType<typeof useLineupJob>;
-  /** The lineup shown, with margins. */
-  lineup: readonly CalibratedCandidate[];
+  team: CalibratedCandidate;
+  /** The lineup's other candidates, sorted and joined. */
+  otherIds: string;
   names: TeamNames;
 }) {
   const { t } = useLanguage();
   const { request, signature, solver } = job;
-  const weakest =
-    lineup.length > 0
-      ? lineup.reduce((a, b) => (b.margin < a.margin ? b : a))
-      : null;
-  const weakestId = weakest?.id ?? null;
-  const otherIds = lineup
-    .flatMap((entry) => (entry.id === weakestId ? [] : [entry.id]))
-    .sort()
-    .join(",");
-  // Keyed by the run's signature and candidate ids, so editing a clear or
-  // bar keeps the advice: they change margins, not damage.
   // biome-ignore lint/correctness/useExhaustiveDependencies: the request follows the signature
   const advisorRequest = useMemo<LevellingRequest | null>(() => {
     const candidates = solver.result?.candidates ?? [];
     const find = (id: string) => candidates.find((entry) => entry.id === id);
-    const candidate = weakestId ? find(weakestId) : undefined;
+    const candidate = find(team.id);
     if (!request || !candidate || solver.isComputing) return null;
     return {
       solver: request,
@@ -153,27 +172,26 @@ export function LevellingAdvice({
         ? otherIds.split(",").flatMap((id) => find(id) ?? [])
         : [],
     };
-  }, [signature, solver.result, solver.isComputing, weakestId, otherIds]);
+  }, [signature, solver.result, solver.isComputing, team.id, otherIds]);
   const state = useLevellingAdvice(advisorRequest);
 
-  if (!weakest || !advisorRequest) return null;
+  if (!advisorRequest) return null;
   const { advice } = state;
+  // The margin on the team's pieces as they are: below the shown one when
+  // the run scored pieces as levelled.
+  const margin = advice ? (team.margin * advice.damage) / team.damage : null;
+  const asIs =
+    margin != null && Math.abs(margin / team.margin - 1) > SAME_MARGIN;
   return (
-    <div className="flex min-w-0 flex-col gap-1.5 text-xs md:text-sm">
+    <div className="flex min-w-0 flex-col gap-1">
       <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
-        <span
-          className={LINEUP_LABEL_CLS}
-          title={t.format(
-            "lineup.worthLevellingTip",
-            LINEUP_MARGIN_TIE_PERCENT
-          )}
-        >
-          {t.ui("lineup.worthLevelling")}
-        </span>
         <span className="min-w-0 truncate font-semibold">
-          {names.name(weakest.templateId)}
+          {names.name(team.templateId)}
         </span>
-        <MarginValue margin={weakest.margin} />
+        <MarginValue margin={margin ?? team.margin} />
+        {asIs && (
+          <span className="text-muted-foreground">{t.ui("lineup.asIs")}</span>
+        )}
         {state.isComputing && (
           <span className="text-muted-foreground">
             {t.ui("lineup.levellingRunning")}
@@ -183,7 +201,7 @@ export function LevellingAdvice({
       {state.error && (
         <p className="text-destructive">{t.ui("lineup.levellingFailed")}</p>
       )}
-      {advice && (
+      {advice && margin != null && (
         <>
           {advice.pieces.length > 0 ? (
             <div className="flex flex-col gap-1">
@@ -191,13 +209,13 @@ export function LevellingAdvice({
                 <PieceRow
                   key={`${piece.charId}:${piece.slot}`}
                   piece={piece}
-                  margin={weakest.margin}
+                  margin={margin}
                 />
               ))}
             </div>
           ) : (
             <p className="text-muted-foreground">
-              {t.format("lineup.noLevelling", LINEUP_MARGIN_TIE_PERCENT)}
+              {t.ui("lineup.noLevelling")}
             </p>
           )}
           {advice.steps.length > 0 && (
@@ -218,6 +236,49 @@ export function LevellingAdvice({
           )}
         </>
       )}
+    </div>
+  );
+}
+
+/**
+ * What to level for each team of the lineup shown, weakest first
+ * (docs/design/lineup-solver.md, P5): per slot the piece most likely to raise
+ * its damage past the margin tie, or, muted, the best smaller gain; then
+ * talent and level steps. Worked out once the run has finished, and again
+ * only when a team or its lineup changes.
+ */
+export function LevellingAdvice({
+  job,
+  lineup,
+  names,
+}: {
+  job: ReturnType<typeof useLineupJob>;
+  /** The lineup shown, with margins. */
+  lineup: readonly CalibratedCandidate[];
+  names: TeamNames;
+}) {
+  const { t } = useLanguage();
+  if (lineup.length === 0 || !job.request || job.solver.isComputing)
+    return null;
+  const teams = [...lineup].sort((a, b) => a.margin - b.margin);
+  const ids = lineup.map((entry) => entry.id).sort();
+  return (
+    <div className="flex min-w-0 flex-col gap-2 text-xs md:text-sm">
+      <span
+        className={LINEUP_LABEL_CLS}
+        title={t.format("lineup.worthLevellingTip", LINEUP_MARGIN_TIE_PERCENT)}
+      >
+        {t.ui("lineup.worthLevelling")}
+      </span>
+      {teams.map((team) => (
+        <TeamAdvice
+          key={team.id}
+          job={job}
+          team={team}
+          otherIds={ids.filter((id) => id !== team.id).join(",")}
+          names={names}
+        />
+      ))}
     </div>
   );
 }

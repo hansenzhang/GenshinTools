@@ -100,6 +100,10 @@ export const LEVELLING_SCREENED_PER_SLOT = 6;
  *  closer ones tie and expected gain decides. */
 export const LEVELLING_CHANCE_STEP = 0.01;
 
+/** Expected gain an option under the tie needs to be listed: the smallest
+ *  the advice shows (0.1%). */
+export const LEVELLING_MIN_GAIN = 0.001;
+
 /** Format tag and version of a lineup run's debug export. */
 export const LINEUP_DEBUG_FORMAT = "genshintools-lineup-debug";
 export const LINEUP_DEBUG_VERSION = 3;

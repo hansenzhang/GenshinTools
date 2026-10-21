@@ -1,15 +1,19 @@
 import "@/providers/reference/statLoaders";
 import "@/domain/combat/damage/index";
 import { describe, expect, it } from "vitest";
+import { substatRollTiers } from "@/config/gameConstants";
 import { TeamBuild } from "@/domain/combat/damage/core/teamBuild";
 import type {
   CalcContext,
   ComboFormula,
   TeamSlotConfig,
 } from "@/domain/combat/damage/types";
+import { LEVELLING_MIN_GAIN } from "@/domain/combat/lineup/constants";
 import {
   adviseLevelling,
+  beatsTie,
   compareLevellingPieces,
+  expectedLevelledPiece,
   expectedRollsByStat,
   type GainDistribution,
   levelledPiece,
@@ -210,6 +214,29 @@ describe("roll odds", () => {
       10
     );
   });
+
+  it("levels a piece to its mean stats", () => {
+    const fresh = piece({ unactivatedSubstats: { "hp%": 5.8 } });
+    const levelled = expectedLevelledPiece(fresh);
+    expect(levelled.level).toBe(20);
+    expect(levelled.unactivatedSubstats).toBeUndefined();
+    // Each stat's added value is the mean of its roll distribution.
+    for (const stat of Object.keys(WEIGHTS) as SubStat[]) {
+      const rolls = rollGainDistribution(
+        pendingRolls(fresh),
+        (rolled) =>
+          rolled === stat ? substatRollTiers[5][stat] : [0, 0, 0, 0],
+        1e-4
+      );
+      const mean = [...rolls].reduce((sum, [k, p]) => sum + k * 1e-4 * p, 0);
+      const fixed = levelledPiece(fresh).substats[stat] ?? 0;
+      expect((levelled.substats[stat] ?? 0) - fixed).toBeCloseTo(mean, 3);
+    }
+    const maxed = piece({ level: 20 });
+    expect(expectedLevelledPiece(maxed)).toBe(maxed);
+    const threeStar = piece({ rarity: 3 });
+    expect(expectedLevelledPiece(threeStar)).toBe(threeStar);
+  });
 });
 
 describe("summarizeOutcome", () => {
@@ -222,6 +249,7 @@ describe("summarizeOutcome", () => {
     // Gains −1%, +1% and +5% against a 3% bar.
     const outcome = summarizeOutcome(0.01, rolls, 0.03, 1e-4);
     expect(outcome.beatChance).toBeCloseTo(0.5, 10);
+    expect(outcome.gainChance).toBeCloseTo(0.75, 10);
     expect(outcome.expectedGain).toBeCloseTo(0.25 * 0.01 + 0.5 * 0.05, 10);
   });
 });
@@ -311,6 +339,8 @@ const SPARE = [
     em: 23,
   }),
   art("cw-sands-def", CW, "sands", "def%", 0, junk),
+  // The worn circlet one upgrade short: a likely gain under the tie.
+  art("glad-circlet-16", "gladiators_finale", "circlet", "cr", 16, crit),
 ];
 
 function member(
@@ -382,7 +412,11 @@ function screenFor(xingqiuSkill = 10): SetScreenInput {
   };
 }
 
-function advise(reservedIds: string[] = [], xingqiuSkill = 10) {
+function advise(
+  reservedIds: string[] = [],
+  xingqiuSkill = 10,
+  accountLevels: Record<string, number> = {}
+) {
   const advice = adviseLevelling({
     screen: screenFor(xingqiuSkill),
     members: MEMBERS,
@@ -393,6 +427,7 @@ function advise(reservedIds: string[] = [], xingqiuSkill = 10) {
     ],
     reservedIds: new Set(reservedIds),
     bar: 0.03,
+    accountLevels,
   });
   if (!advice) throw new Error("The team could not be scored.");
   return advice;
@@ -424,6 +459,37 @@ describe("adviseLevelling", () => {
     expect(ids).not.toContain("noblesse-goblet");
     // Xingqiu's pieces are all levelled and nobody else's are free.
     expect(ids.every((id) => !id.startsWith("emblem-"))).toBe(true);
+  });
+
+  it("lists a smaller gain under the tie with its chance of any gain", () => {
+    const circlet = advise().pieces.find(
+      (entry) => entry.charId === "hu_tao" && entry.slot === "circlet"
+    );
+    expect(circlet?.artifact.id).toBe("glad-circlet-16");
+    expect(circlet && beatsTie(circlet)).toBe(false);
+    // Three of its four lines raise Hu Tao's damage.
+    expect(circlet?.gainChance).toBeCloseTo(0.75, 6);
+    expect(circlet?.expectedGain).toBeGreaterThanOrEqual(LEVELLING_MIN_GAIN);
+    expect(circlet?.expectedGain).toBeLessThan(0.03);
+    // Options that can beat the tie rank first.
+    const { pieces } = advise();
+    expect(pieces.at(-1)?.artifact.id).toBe("glad-circlet-16");
+  });
+
+  it("prices an account level below its tier up to the tier", () => {
+    const steps = advise([], 10, { hu_tao: 89, xingqiu: 90 }).steps;
+    const huTao = steps.filter(
+      (step) => step.charId === "hu_tao" && step.kind === "level"
+    );
+    expect(huTao).toEqual([
+      expect.objectContaining({ from: 89, to: 90, assumed: true }),
+    ]);
+    expect(huTao[0].gain).toBeGreaterThan(0);
+    expect(huTao[0].gain).toBeLessThan(0.03);
+    // A member at its tier gets the next tier.
+    expect(
+      steps.find((step) => step.charId === "xingqiu" && step.kind === "level")
+    ).toMatchObject({ from: 90, to: 95, assumed: false });
   });
 
   it("prices one more character level and talent level", () => {

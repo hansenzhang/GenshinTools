@@ -2,6 +2,7 @@ import type { Build } from "@/domain/models";
 import { artifactIdToHalfSetId } from "@/domain/reference/catalog";
 import {
   characterStatsResource,
+  getCharacterLevelTier,
   resolveCharacterStats,
   resolveWeaponStats,
 } from "@/domain/reference/stats";
@@ -136,9 +137,10 @@ function refinementValue(values: number[], refinement?: number): number {
 
 function getAscensionCr(input: CrBudgetInput): number {
   try {
+    // Account levels are scored as their tier, as in team configs.
     const charStats = resolveCharacterStats(
       input.characterId,
-      input.characterLevel
+      Number(getCharacterLevelTier(input.characterLevel))
     );
     const totalCr = charStats.reduce(
       (total, entry) => total + (entry.key === "cr" ? entry.value : 0),

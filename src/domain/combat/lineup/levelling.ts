@@ -1,7 +1,7 @@
 /**
  * Levelling advisor (docs/design/lineup-solver.md, P5): which unlevelled
- * pieces are worth levelling for a lineup's weakest team, and what one more
- * talent or character level is worth.
+ * pieces are worth levelling for a lineup's team, and what one more talent
+ * or character level is worth.
  *
  * Roll odds are the game's documented mechanics, ported from Mistilteinn's
  * `upgradeDistribution` and `expectedRollsByStat`: one upgrade per +4
@@ -37,6 +37,7 @@ import { memberStatWeights, type StatWeights } from "./accountEstimate";
 import {
   LEVELLING_CHANCE_STEP,
   LEVELLING_GAIN_BIN,
+  LEVELLING_MIN_GAIN,
   LEVELLING_SCREENED_PER_SLOT,
 } from "./constants";
 import { setChoiceKey } from "./setChoices";
@@ -185,6 +186,31 @@ export function expectedRollsByStat(
   return out;
 }
 
+/** A stat's mean roll value, in the piece's units. */
+function meanRoll(stat: SubStat, rarity: 4 | 5): number {
+  const tiers = substatRollTiers[rarity][stat];
+  return tiers.reduce((sum, tier) => sum + tier, 0) / tiers.length;
+}
+
+/**
+ * The piece at max level with its pending rolls at their expected value: its
+ * mean stats once levelled. A piece at max level, or below 4★, is returned as
+ * it is.
+ */
+export function expectedLevelledPiece(artifact: ArtifactData): ArtifactData {
+  if (upgradesLeft(artifact) === 0) return artifact;
+  const levelled = levelledPiece(artifact);
+  const pending = pendingRolls(artifact);
+  const substats = { ...levelled.substats };
+  for (const [stat, rolls] of Object.entries(expectedRollsByStat(pending)) as [
+    SubStat,
+    number,
+  ][])
+    substats[stat] =
+      (substats[stat] ?? 0) + rolls * meanRoll(stat, pending.rarity);
+  return { ...levelled, substats };
+}
+
 // ─── Gain distributions ───
 
 /** Probability by bin: bin k holds gains of about k · bin width. */
@@ -264,6 +290,8 @@ export function rollGainDistribution(
 export interface LevellingOutcome {
   /** P(fixed gain + rolls' gain > bar). */
   beatChance: number;
+  /** P(gain > 0). */
+  gainChance: number;
   /** E[max(0, gain)]. */
   expectedGain: number;
 }
@@ -275,19 +303,33 @@ export function summarizeOutcome(
   bin = LEVELLING_GAIN_BIN
 ): LevellingOutcome {
   let beatChance = 0;
+  let gainChance = 0;
   let expectedGain = 0;
   for (const [k, p] of rolls) {
     const gain = fixedGain + k * bin;
     if (gain > bar) beatChance += p;
-    if (gain > 0) expectedGain += p * gain;
+    if (gain > 0) {
+      gainChance += p;
+      expectedGain += p * gain;
+    }
   }
-  return { beatChance: Math.min(1, beatChance), expectedGain };
+  return {
+    beatChance: Math.min(1, beatChance),
+    gainChance: Math.min(1, gainChance),
+    expectedGain,
+  };
 }
 
 const chanceSteps = (chance: number) =>
   Math.round(chance / LEVELLING_CHANCE_STEP);
 
-/** Most likely to beat the current piece first; ties by expected gain. */
+/** Whether the option has a chance, to the step, of beating the tie. */
+export function beatsTie(piece: Pick<LevellingPiece, "beatChance">): boolean {
+  return chanceSteps(piece.beatChance) >= 1;
+}
+
+/** Most likely to beat the current piece first; ties, and options that
+ *  cannot beat it, by expected gain. */
 export function compareLevellingPieces(
   a: LevellingPiece,
   b: LevellingPiece
@@ -310,6 +352,8 @@ export interface LevellingInput {
   reservedIds: ReadonlySet<string>;
   /** Relative gain a piece has to exceed to beat the current one. */
   bar: number;
+  /** Members' levels on the account, which configs score as their tier. */
+  accountLevels: Readonly<Record<string, number>>;
 }
 
 type Pieces = Record<Slot, ArtifactData | null>;
@@ -336,11 +380,11 @@ function expectedRollValue(
   for (const [stat, rolls] of Object.entries(expectedRollsByStat(pending)) as [
     SubStat,
     number,
-  ][]) {
-    const tiers = tierValues(stat, pending.rarity);
-    const mean = tiers.reduce((sum, tier) => sum + tier, 0) / tiers.length;
-    value += (weights[stat] ?? 0) * rolls * mean;
-  }
+  ][])
+    value +=
+      (weights[stat] ?? 0) *
+      rolls *
+      toInternal(stat, meanRoll(stat, pending.rarity));
   return value;
 }
 
@@ -400,7 +444,8 @@ function scoreOption(
  * The member's best levelling option for a slot. Pieces that keep its sets
  * and nobody else needs are ranked by the gradient at the current build
  * (fixed part plus expected rolls); the best few and the worn piece are
- * scored exactly. Null when none can beat the current piece.
+ * scored exactly. Null when none can beat the current piece or is expected
+ * to gain `LEVELLING_MIN_GAIN`.
  */
 function bestForSlot(
   team: Fielded,
@@ -441,35 +486,62 @@ function bestForSlot(
     if (option && (!best || compareLevellingPieces(option, best) < 0))
       best = option;
   }
-  return best && chanceSteps(best.beatChance) >= 1 ? best : null;
+  return best && (beatsTie(best) || best.expectedGain >= LEVELLING_MIN_GAIN)
+    ? best
+    : null;
 }
 
-/** One character level tier and one level of each talent, per member. */
+/** Lowest level whose stats sit between two tiers' rows. */
+const MIN_OFF_TIER_LEVEL = 71;
+
+/**
+ * One level of each talent per member, and the member's next level: from its
+ * account level to the tier it is scored at when the account level is below
+ * it (Lv 89 → 90, a gain the margins already count), otherwise the next tier.
+ */
 function adviseSteps(team: Fielded): LevellingStep[] {
-  const { screen } = team.input;
+  const { screen, accountLevels } = team.input;
   const steps: LevellingStep[] = [];
-  const gainWith = (charId: string, patch: Partial<TeamSlotConfig>) => {
-    const configs = screen.configs.map((config) =>
-      config.charId === charId ? { ...config, ...patch } : config
-    );
-    const damage = evaluateAssignment(
-      { ...screen, configs },
+  const damageWith = (charId: string, patch: Partial<TeamSlotConfig>) =>
+    evaluateAssignment(
+      {
+        ...screen,
+        configs: screen.configs.map((config) =>
+          config.charId === charId ? { ...config, ...patch } : config
+        ),
+      },
       team.assignment,
       team.sheets
     );
+  const gainWith = (charId: string, patch: Partial<TeamSlotConfig>) => {
+    const damage = damageWith(charId, patch);
     return damage == null ? 0 : damage / team.damage - 1;
   };
   for (const config of screen.configs) {
     const { charId, charLevel, talentLevels } = config;
-    const nextLevel = getNextLevelTier(charLevel);
-    if (nextLevel)
+    const accountLevel = accountLevels[charId] ?? charLevel;
+    if (accountLevel < charLevel && accountLevel >= MIN_OFF_TIER_LEVEL) {
+      const below = damageWith(charId, { charLevel: accountLevel });
       steps.push({
         charId,
         kind: "level",
-        from: charLevel,
-        to: nextLevel,
-        gain: gainWith(charId, { charLevel: nextLevel }),
+        from: accountLevel,
+        to: charLevel,
+        gain: below ? team.damage / below - 1 : 0,
+        assumed: true,
       });
+    } else {
+      const nextLevel = getNextLevelTier(charLevel);
+      if (nextLevel)
+        steps.push({
+          charId,
+          kind: "level",
+          from: charLevel,
+          to: nextLevel,
+          gain: gainWith(charId, { charLevel: nextLevel }),
+          assumed: false,
+        });
+    }
     if (!talentLevels) continue;
     for (const kind of Object.keys(talentLevels) as (keyof TalentLevels)[]) {
       const from = talentLevels[kind];
@@ -482,6 +554,7 @@ function adviseSteps(team: Fielded): LevellingStep[] {
         gain: gainWith(charId, {
           talentLevels: { ...talentLevels, [kind]: from + 1 },
         }),
+        assumed: false,
       });
     }
   }
@@ -490,13 +563,15 @@ function adviseSteps(team: Fielded): LevellingStep[] {
 
 /**
  * The best levelling option per member and slot, most likely to beat the
- * current piece first, and the talent and level steps that raise damage.
- * Members that take any pieces of their set have no piece options. Null when
- * the team cannot be scored.
+ * current piece first, and the talent and level steps that raise damage,
+ * with the team's damage they are relative to. Members that take any pieces
+ * of their set have no piece options. Null when the team cannot be scored.
  */
-export function adviseLevelling(
-  input: LevellingInput
-): { pieces: LevellingPiece[]; steps: LevellingStep[] } | null {
+export function adviseLevelling(input: LevellingInput): {
+  damage: number;
+  pieces: LevellingPiece[];
+  steps: LevellingStep[];
+} | null {
   const { screen, members } = input;
   const assignment: SetAssignment = Object.fromEntries(
     members.map((member) => [member.charId, member.artifactSet])
@@ -528,6 +603,7 @@ export function adviseLevelling(
     }
   }
   return {
+    damage,
     pieces: pieces.sort(compareLevellingPieces),
     steps: adviseSteps(team),
   };

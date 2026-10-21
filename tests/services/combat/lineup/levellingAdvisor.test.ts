@@ -2,6 +2,7 @@ import "@/providers/reference/statLoaders";
 import { beforeAll, describe, expect, it, vi } from "vitest";
 import { StatSheet } from "@/domain/combat/damage/core/statSheet";
 import { candidateArtifactIds } from "@/domain/combat/lineup/candidates";
+import { beatsTie } from "@/domain/combat/lineup/levelling";
 import {
   evaluateAssignment,
   formedSet,
@@ -171,18 +172,25 @@ const request: LineupSolverRequest = {
   timeBudgetSec: 1,
 };
 
+async function solve(input: LineupSolverRequest): Promise<LineupSolverResult> {
+  let finished: LineupSolverResult | null = null;
+  await runLineupSolver(input, chars, weapons, (message) => {
+    if (message.type === "result") finished = message.result;
+  });
+  if (!finished) throw new Error("The solver gave no result.");
+  return finished;
+}
+
+const best = (candidates: readonly LineupCandidate[]) =>
+  candidates.reduce((a, b) => (b.ratio > a.ratio ? b : a));
+
 let result: LineupSolverResult;
 beforeAll(async () => {
   [chars, weapons] = await Promise.all([
     characterStatsResource.preload(),
     weaponStatsResource.preload(),
   ]);
-  let finished: LineupSolverResult | null = null;
-  await runLineupSolver(request, chars, weapons, (message) => {
-    if (message.type === "result") finished = message.result;
-  });
-  if (!finished) throw new Error("The solver gave no result.");
-  result = finished;
+  result = await solve(request);
 }, 60_000);
 
 const sheetsOf = (candidate: LineupCandidate) =>
@@ -240,6 +248,7 @@ describe("adviseCandidateLevelling", () => {
       chars
     );
     expect(advice?.candidateId).toBe(candidate.id);
+    expect(advice!.damage / candidate.damage).toBeCloseTo(1, 9);
     const huTao = advice!.pieces.filter((entry) => entry.charId === "hu_tao");
     expect(huTao.length).toBeGreaterThan(0);
     for (const entry of huTao) {
@@ -281,5 +290,46 @@ describe("adviseCandidateLevelling", () => {
     expect(
       advice!.pieces.some((entry) => reserved.has(entry.artifact.id))
     ).toBe(false);
+  });
+});
+
+describe("a run that levels pieces to max", () => {
+  const levelling = { ...request, levelToMax: true };
+  let levelled: LineupSolverResult;
+  beforeAll(async () => {
+    levelled = await solve(levelling);
+  }, 60_000);
+
+  it("wears unlevelled pieces as levelled and reports them as they are", () => {
+    const top = best(levelled.candidates);
+    const huTao = top.members.find((member) => member.charId === "hu_tao")!;
+    const fresh = Object.values(huTao.artifacts).filter((artifact) =>
+      artifact?.id.startsWith("fresh-")
+    );
+    expect(fresh.length).toBeGreaterThan(0);
+    for (const artifact of fresh)
+      expect(artifact).toEqual(
+        account.extraArtifacts.find((entry) => entry.id === artifact?.id)
+      );
+    expect(top.ratio).toBeGreaterThan(best(result.candidates).ratio);
+  });
+
+  it("advises from the pieces as they are", () => {
+    const top = best(levelled.candidates);
+    const advice = adviseCandidateLevelling(
+      { solver: levelling, candidate: top, others: [] },
+      chars
+    );
+    expect(advice).not.toBeNull();
+    // The candidate's damage counts its pieces as levelled.
+    expect(advice!.damage).toBeLessThan(top.damage);
+    expect(
+      advice!.pieces.some(
+        (entry) =>
+          entry.artifact.id.startsWith("fresh-") &&
+          entry.replaces?.id === entry.artifact.id &&
+          beatsTie(entry)
+      )
+    ).toBe(true);
   });
 });

@@ -3,7 +3,7 @@
 Status: decisions and design, 2026-10-16. P1 is implemented as Build comparison › Team sets,
 P0 as Team Comp › Lineups (2026-10-18), P2 as Lineups › Abyss lineups and P3 as Lineups ›
 Stygian lineup (2026-10-19), with the fixes in "P3 fixes". P5 is implemented as Lineups ›
-Worth levelling (2026-10-21, "P5 levelling advisor"). P4 and P6 are not.
+Worth levelling (2026-10-21, "P5 levelling advisor"), with "P5 follow-ups". P4 and P6 are not.
 Source: the feasibility study in `~/mistilteinn/reference/notes/team-solver-study.md`, which
 compares this repo with Genshin Optimizer (GO) and gcsim, and the decisions made with the user
 after it.
@@ -705,3 +705,55 @@ other teams left out; a +0 worn piece with the right main stat recommended; step
   - Weapon levels.
   - The next-weakest team's margin as a cap on the floor gain.
   - P4 still decides whether the multi-team work continues; P5 stands either way.
+
+## P5 follow-ups (design, 2026-10-21)
+
+From testing on the Stygian export of 2026-10-21 12:01 (20 min per team). The account has 1,338
+pieces at +4 and 458 at +0 against 34 at max, and the advisor listed nothing for the weakest
+team (Lunar, ×0.528): no single swap beat the 3% tie. Ineffa, Columbina and Linnea are Lv 89,
+and the advisor offered "Lv 90 → 95".
+
+- **Level artifacts to max** (run option, off by default, kept for the session like Kept
+  artifacts only):
+  - The run scores every 4★ and 5★ piece below max level as levelled: main stat at max, the
+    lines the game has shown, and its pending rolls at their expected value (expected rolls
+    per stat × the mean roll). `expectedLevelledPiece` in `levelling.ts`. Expected rolls are
+    the mean outcome, so a lineup is planned on what levelling gives on average.
+  - It is applied once, to the request's account at the run's entry, so the account estimate,
+    the optimizer, scoring, any-pieces checks and the MILP all see the same pieces. The
+    recorded build is not levelled: it is the build that was played, and `r` stays its ratio.
+  - Results carry the real pieces (the solver maps them back when it reports), so cards show
+    their real levels; a piece the run levelled shows "+4→20" (not for any-pieces members, whose
+    stats don't matter). Margins assume levelling.
+  - `LineupSolverRequest.levelToMax`, optional (absent: off), so debug exports stay version 3;
+    part of the job signature. The replay's `--level-to-max` turns it on.
+- **Advice for every team** of the lineup shown, weakest first, each with the other teams'
+  pieces reserved. Abyss chambers advise both halves.
+- **Gains under the tie**: a slot's best option is listed when it can beat the tie (as before)
+  or its expected gain is at least 0.1% (`LEVELLING_MIN_GAIN`). Options that cannot beat the tie
+  are muted and show the chance of any gain (`gainChance`, P(gain > 0)) in place of the chance
+  to beat the tie. Ranking is unchanged.
+- **Margin readout**: the advice reports the team's damage on its real pieces, and "→ ×margin"
+  scales the shown margin by that damage ÷ the candidate's. Without levelling the ratio is 1;
+  with it, the base is the margin the team has before anything is levelled.
+- **Lv 89 → 90, in the advisor only** (decided with the user, 2026-10-21): the rest of the app
+  keeps scoring a character at its level's tier (70/80/90/95/100), so an 89 counts as 90.
+  - A member whose account level is below the level it is scored at, and above 70, gets the
+    step "account level → scored level", with gain = damage at the scored level ÷ damage at the
+    account level − 1. Its chip says the margins already count the higher level. Other members
+    get the next tier as before. Levels up to 70 have no tier below to interpolate from.
+  - To score an off-tier level, the damage core takes any level from 70 to 100:
+    `resolveCharacterStats` interpolates HP/ATK/DEF from the tier below with its ascension
+    phase's slope, and takes the ascension stat from the tier below. Growth curves are linear
+    within a phase (checked against GO's `expCurve.json`), so 81–89 and 91–99 are exact. The 70
+    and 80 rows straddle an ascension, so 71–79 use the 80 → 90 slope (≤1% of the step off).
+    Reaction level multipliers cover levels 1–100 (GO's
+    `transformativeReactionLevelMultipliers`).
+  - Callers outside the damage core that pass account levels (Score-up's idle stat sheet, the
+    CR budget) round to the tier themselves, so their numbers do not change. Team configs
+    already round.
+
+Tests: an expected levelled piece against the mean of the roll distribution; a run with
+`levelToMax` that wears unlevelled pieces and reports them at their real level; sub-tie options
+listed with their gain chance; the off-tier step; an off-tier level's base stats between the
+tiers; advice requests for every team of the lineup.

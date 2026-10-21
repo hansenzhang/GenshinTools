@@ -196,7 +196,7 @@ describe("AbyssLineups", () => {
     expect(screen.getAllByText("×0.90").length).toBeGreaterThan(0);
   });
 
-  it("advises levelling for the weaker half, kept while a clear is edited", () => {
+  it("advises levelling for both halves, weaker first, kept while a clear is edited", () => {
     seed();
     useAccountStore.setState({
       activeAccountId: 1,
@@ -227,10 +227,12 @@ describe("AbyssLineups", () => {
     });
     const view = render(<AbyssLineups />);
     expect(screen.getByText("Worth levelling")).toBeInTheDocument();
-    expect(screen.getByText("Working out what to level…")).toBeInTheDocument();
-    const request = levelling.requests.at(-1);
-    expect(request?.candidate.id).toBe("c2");
-    expect(request?.others.map((entry) => entry.id)).toEqual(["c3"]);
+    expect(screen.getAllByText("Working out what to level…")).toHaveLength(2);
+    const [weaker, stronger] = levelling.requests.slice(-2);
+    expect(weaker?.candidate.id).toBe("c2");
+    expect(weaker?.others.map((entry) => entry.id)).toEqual(["c3"]);
+    expect(stronger?.candidate.id).toBe("c3");
+    expect(stronger?.others.map((entry) => entry.id)).toEqual(["c2"]);
 
     act(() =>
       useLineupStore.getState().updateCalibration("c-tb", {
@@ -238,7 +240,8 @@ describe("AbyssLineups", () => {
       })
     );
     view.rerender(<AbyssLineups />);
-    expect(levelling.requests.at(-1)).toBe(request);
+    expect(levelling.requests.slice(-2)).toEqual([weaker, stronger]);
+    expect(levelling.requests.at(-2)).toBe(weaker);
   });
 
   it("explains a half whose team found nothing", () => {

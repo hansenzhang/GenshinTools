@@ -11,6 +11,7 @@ import {
   getCharacterLevelTier,
   getWeaponDisplayMeta,
   getWeaponStatsAt90,
+  resolveCharacterStats,
   type WeaponStats,
   type WeaponStatsMap,
   weaponStatsResource,
@@ -266,5 +267,58 @@ describe("async loaders and sync getters", () => {
     const a = await weaponStatsResource.preload();
     const b = await weaponStatsResource.preload();
     expect(a).toBe(b);
+  });
+});
+
+// ─── resolveCharacterStats at off-tier levels ────────────────────────────────
+
+describe("resolveCharacterStats", () => {
+  beforeAll(async () => {
+    await characterStatsResource.preload();
+  });
+
+  // Summed: CR has a 5% baseline entry besides the ascension stat.
+  const value = (level: number, key: string) =>
+    resolveCharacterStats("ineffa", level).reduce(
+      (sum, entry) => sum + (entry.key === key ? entry.value : 0),
+      0
+    );
+  const row = (tier: "70" | "80" | "90", key: "baseAtk" | "cr") => {
+    const raw = characterStatsResource.peek()?.ineffa.levels[tier]?.[key];
+    if (raw === undefined) throw new Error(`No ${key} at ${tier}`);
+    return raw.endsWith("%")
+      ? Number.parseFloat(raw) / 100
+      : Number.parseFloat(raw);
+  };
+
+  it("reads a tier's row", () => {
+    expect(value(90, "baseAtk")).toBe(row("90", "baseAtk"));
+    expect(value(80, "baseAtk")).toBe(row("80", "baseAtk"));
+  });
+
+  it("grows HP, ATK and DEF within an ascension phase", () => {
+    // Lv 89 is nine tenths of the way from 80 to 90; the ascension stat is
+    // the same in both rows.
+    const atk80 = row("80", "baseAtk");
+    expect(value(89, "baseAtk")).toBeCloseTo(
+      atk80 + 0.9 * (row("90", "baseAtk") - atk80),
+      9
+    );
+    expect(value(89, "cr")).toBeCloseTo(row("90", "cr") + 0.05, 9);
+  });
+
+  it("keeps a level below an ascension at the tier below's ascension stat", () => {
+    // Lv 79 has not ascended to 80/90: the 70 row's CR, grown at the 80 → 90
+    // rate.
+    expect(value(79, "cr")).toBeCloseTo(row("70", "cr") + 0.05, 9);
+    expect(value(79, "baseAtk")).toBeCloseTo(
+      row("70", "baseAtk") +
+        0.9 * (row("90", "baseAtk") - row("80", "baseAtk")),
+      9
+    );
+  });
+
+  it("reads the 70 row below 70", () => {
+    expect(value(20, "baseAtk")).toBe(row("70", "baseAtk"));
   });
 });
