@@ -63,6 +63,7 @@ import {
   selectActiveTierDescription,
   selectActiveTierTitle,
 } from "@/stores/createTierStore";
+import { usePreferencesStore } from "@/stores/usePreferencesStore";
 import { useWeaponTierStore } from "@/stores/useWeaponTierStore";
 
 // Placeholder for weapon tier list presets
@@ -143,7 +144,8 @@ export function WeaponTierListView({ onActions }: WeaponTierListViewProps) {
   const [selectedSecondaryStats, setSelectedSecondaryStats] = useState<
     Set<MainStat>
   >(() => new Set<MainStat>());
-  const [ownedOnly, setOwnedOnly] = useState(false);
+  const ownedOnly = usePreferencesStore((s) => s.ownedOnly.weaponTierList);
+  const setOwnedOnly = usePreferencesStore((s) => s.setOwnedOnly);
   const [presetOptions, setPresetOptions] = useState<PresetOption[]>(
     () => getCachedPresetMetadata(presetModules) ?? []
   );
@@ -340,7 +342,7 @@ export function WeaponTierListView({ onActions }: WeaponTierListViewProps) {
             <span className="inline-flex">
               <FilterChip
                 active={ownedOnly}
-                onClick={() => setOwnedOnly(!ownedOnly)}
+                onClick={() => setOwnedOnly("weaponTierList", !ownedOnly)}
               >
                 {t.ui("common.ownedOnly")}
               </FilterChip>
@@ -353,6 +355,7 @@ export function WeaponTierListView({ onActions }: WeaponTierListViewProps) {
       rarityFilter,
       selectedSecondaryStats,
       ownedOnly,
+      setOwnedOnly,
       t,
       sortedWeaponSecondaryStats,
     ]

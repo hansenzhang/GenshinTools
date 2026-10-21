@@ -71,6 +71,7 @@ import {
   selectActiveTierDescription,
   selectActiveTierTitle,
 } from "@/stores/createTierStore";
+import { usePreferencesStore } from "@/stores/usePreferencesStore";
 import { useTierStore } from "@/stores/useTierStore";
 
 const presetModules = import.meta.glob<{ default: TierListData }>(
@@ -159,7 +160,8 @@ export function CharacterTierListView({
   const [rarityFilter, setRarityFilter] = useState<Set<Rarity>>(
     () => new Set<Rarity>([5, 4])
   );
-  const [ownedOnly, setOwnedOnly] = useState(false);
+  const ownedOnly = usePreferencesStore((s) => s.ownedOnly.characterTierList);
+  const setOwnedOnly = usePreferencesStore((s) => s.setOwnedOnly);
   const tableRef = useRef<HTMLDivElement>(null);
 
   // Ownership check callback
@@ -396,7 +398,7 @@ export function CharacterTierListView({
             <span className="inline-flex">
               <FilterChip
                 active={ownedOnly}
-                onClick={() => setOwnedOnly(!ownedOnly)}
+                onClick={() => setOwnedOnly("characterTierList", !ownedOnly)}
               >
                 {t.ui("common.ownedOnly")}
               </FilterChip>
@@ -414,6 +416,7 @@ export function CharacterTierListView({
       setShowManekin,
       rarityFilter,
       ownedOnly,
+      setOwnedOnly,
       t,
     ]
   );

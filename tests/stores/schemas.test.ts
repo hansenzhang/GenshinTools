@@ -767,6 +767,12 @@ describe("PersistedPreferencesStoreSchema", () => {
         releaseSort: "desc",
         scoreSort: "off",
       },
+      ownedOnly: {
+        characterPicker: false,
+        weaponPicker: false,
+        characterTierList: false,
+        weaponTierList: false,
+      },
     });
 
     const result = PersistedPreferencesStoreSchema.parse({

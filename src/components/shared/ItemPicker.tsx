@@ -68,6 +68,7 @@ import { getAssetUrl } from "@/lib/assets/urls.ts";
 import { cn } from "@/lib/utils";
 import { getSortedWeaponSecondaryStats } from "@/services/catalog/weaponFilters.ts";
 import { selectActiveTierAssignments } from "@/stores/createTierStore";
+import { usePreferencesStore } from "@/stores/usePreferencesStore";
 import { useTierStore } from "@/stores/useTierStore";
 
 type ItemPickerType = "character" | "weapon" | "artifact";
@@ -480,6 +481,13 @@ function PickerContent({
     Record<string, string | number>
   >({});
   const [sortByTier, setSortByTier] = useState(false);
+  const ownedOnlyScope = type === "weapon" ? "weaponPicker" : "characterPicker";
+  const ownedOnlyPreference = usePreferencesStore(
+    (s) => s.ownedOnly[ownedOnlyScope]
+  );
+  const setOwnedOnlyPreference = usePreferencesStore((s) => s.setOwnedOnly);
+  // A remembered filter stays dormant until there is account data to match.
+  const ownedOnly = ownedOnlyPreference && hasOwnershipData;
 
   const sortedCharacters = useMemo(
     () =>
@@ -622,10 +630,7 @@ function PickerContent({
       }
     }
 
-    if (
-      activeFilters.ownedOnly &&
-      (type === "character" || type === "weapon")
-    ) {
+    if (ownedOnly && (type === "character" || type === "weapon")) {
       const itemType = type as "character" | "weapon";
       result = result.filter((item) => isOwned(itemType, item.id as string));
     }
@@ -648,6 +653,7 @@ function PickerContent({
     filter,
     search,
     activeFilters,
+    ownedOnly,
     isOwned,
     type,
     artifactTab,
@@ -850,6 +856,10 @@ function PickerContent({
             }
             sortByTier={sortByTier}
             onSortByTierChange={setSortByTier}
+            ownedOnly={ownedOnly}
+            onOwnedOnlyChange={(value) =>
+              setOwnedOnlyPreference(ownedOnlyScope, value)
+            }
             hasTierData={hasTierData}
             hasOwnershipData={hasOwnershipData}
           />
@@ -913,6 +923,8 @@ function FilterBar({
   sortedWeaponSecondaryStats = [],
   sortByTier,
   onSortByTierChange,
+  ownedOnly,
+  onOwnedOnlyChange,
   hasTierData,
   hasOwnershipData,
 }: {
@@ -922,6 +934,8 @@ function FilterBar({
   sortedWeaponSecondaryStats?: MainStat[];
   sortByTier: boolean;
   onSortByTierChange: (v: boolean) => void;
+  ownedOnly: boolean;
+  onOwnedOnlyChange: (v: boolean) => void;
   hasTierData: boolean;
   hasOwnershipData: boolean;
 }) {
@@ -957,8 +971,10 @@ function FilterBar({
             <TooltipTrigger asChild>
               <span className="inline-flex">
                 <FilterChip
-                  isActive={!!activeFilters.ownedOnly}
-                  onClick={() => hasOwnershipData && toggle("ownedOnly", 1)}
+                  isActive={ownedOnly}
+                  onClick={() =>
+                    hasOwnershipData && onOwnedOnlyChange(!ownedOnly)
+                  }
                   className={cn(
                     "w-auto px-2 gap-1",
                     !hasOwnershipData && "opacity-40 cursor-not-allowed"
@@ -970,10 +986,7 @@ function FilterBar({
                   }
                 >
                   <Bookmark
-                    className={cn(
-                      "h-3 w-3",
-                      activeFilters.ownedOnly && "fill-current"
-                    )}
+                    className={cn("h-3 w-3", ownedOnly && "fill-current")}
                   />
                   <span className="text-xs">{t.ui("common.ownedOnly")}</span>
                 </FilterChip>

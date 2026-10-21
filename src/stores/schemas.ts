@@ -40,6 +40,18 @@ export const DEFAULT_CHARACTER_SORT: {
   scoreSort: "off",
 };
 
+export const DEFAULT_OWNED_ONLY_FILTERS: {
+  characterPicker: boolean;
+  weaponPicker: boolean;
+  characterTierList: boolean;
+  weaponTierList: boolean;
+} = {
+  characterPicker: false,
+  weaponPicker: false,
+  characterTierList: false,
+  weaponTierList: false,
+};
+
 export const DEFAULT_VIEW_SETTINGS: {
   activeTeamId: string | null;
   ownedOnly: boolean | null;
@@ -645,6 +657,21 @@ export const PersistedPreferencesStoreSchema = z.object({
         .catch(DEFAULT_CHARACTER_SORT.scoreSort),
     })
     .catch(DEFAULT_CHARACTER_SORT),
+  // Added without a version bump: stores saved before it hydrate to defaults.
+  ownedOnly: z
+    .object({
+      characterPicker: z
+        .boolean()
+        .catch(DEFAULT_OWNED_ONLY_FILTERS.characterPicker),
+      weaponPicker: z.boolean().catch(DEFAULT_OWNED_ONLY_FILTERS.weaponPicker),
+      characterTierList: z
+        .boolean()
+        .catch(DEFAULT_OWNED_ONLY_FILTERS.characterTierList),
+      weaponTierList: z
+        .boolean()
+        .catch(DEFAULT_OWNED_ONLY_FILTERS.weaponTierList),
+    })
+    .catch(DEFAULT_OWNED_ONLY_FILTERS),
 });
 
 // ─── Cloud sync metadata ───

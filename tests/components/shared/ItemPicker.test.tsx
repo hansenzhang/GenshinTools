@@ -2,7 +2,9 @@ import { fireEvent } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { ItemPicker } from "@/components/shared/ItemPicker";
 import { characters } from "@/generated/catalog/resources";
+import { DEFAULT_OWNED_ONLY_FILTERS } from "@/stores/schemas";
 import { useAccountStore } from "@/stores/useAccountStore";
+import { usePreferencesStore } from "@/stores/usePreferencesStore";
 import { render, screen, waitFor } from "../../utils/render";
 
 describe("ItemPicker", () => {
@@ -14,6 +16,9 @@ describe("ItemPicker", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     useAccountStore.setState({ activeAccountId: null, accounts: {} });
+    usePreferencesStore.setState({
+      ownedOnly: { ...DEFAULT_OWNED_ONLY_FILTERS },
+    });
   });
 
   describe("character picker", () => {
@@ -278,6 +283,72 @@ describe("ItemPicker", () => {
       await user.click(ownedOnlyBtn);
       await waitFor(() => {
         expect(getGridChildren().length).toBe(initialCount);
+      });
+    });
+
+    it("remembers the filter the next time a character picker opens", async () => {
+      const user = userEvent.setup({ delay: null });
+      const renderPicker = () =>
+        render(
+          <ItemPicker
+            type="character"
+            value={null}
+            onChange={mockOnChange}
+            defaultOpen
+            filter={focusedCharacterFilter}
+          />
+        );
+      const getGridChildren = () =>
+        Array.from(document.querySelector(".grid")?.children ?? []);
+
+      const first = renderPicker();
+      await waitFor(() => {
+        expect(getGridChildren().length).toBeGreaterThan(0);
+      });
+      const initialCount = getGridChildren().length;
+      await user.click(screen.getByText("Owned Only"));
+      await waitFor(() => {
+        expect(getGridChildren().length).toBeLessThan(initialCount);
+      });
+      const filteredCount = getGridChildren().length;
+      first.unmount();
+
+      renderPicker();
+      await waitFor(() => {
+        expect(getGridChildren().length).toBe(filteredCount);
+      });
+      expect(usePreferencesStore.getState().ownedOnly).toEqual({
+        ...DEFAULT_OWNED_ONLY_FILTERS,
+        characterPicker: true,
+      });
+    });
+
+    it("keeps a remembered filter dormant without account data", async () => {
+      useAccountStore.setState({ activeAccountId: null, accounts: {} });
+      const renderPicker = () =>
+        render(
+          <ItemPicker
+            type="character"
+            value={null}
+            onChange={mockOnChange}
+            defaultOpen
+            filter={focusedCharacterFilter}
+          />
+        );
+      const getGridChildren = () =>
+        Array.from(document.querySelector(".grid")?.children ?? []);
+
+      const unfiltered = renderPicker();
+      await waitFor(() => {
+        expect(getGridChildren().length).toBeGreaterThan(0);
+      });
+      const unfilteredCount = getGridChildren().length;
+      unfiltered.unmount();
+
+      usePreferencesStore.getState().setOwnedOnly("characterPicker", true);
+      renderPicker();
+      await waitFor(() => {
+        expect(getGridChildren().length).toBe(unfilteredCount);
       });
     });
 
