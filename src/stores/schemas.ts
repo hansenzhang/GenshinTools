@@ -320,6 +320,10 @@ const TeamDamageConfigSchema = z
     formulaMode: z.enum(["single", "combo"]).optional(),
     combo: z.unknown().nullable().optional(),
     rotationSeconds: z.number().finite().positive().optional().catch(undefined),
+    setUptimes: z
+      .record(z.string(), z.number().finite().min(0).max(1))
+      .optional()
+      .catch(undefined),
   })
   .loose();
 

@@ -109,6 +109,7 @@ import {
   buildTeamSlotConfigs,
   detectEquippedSets,
 } from "@/domain/team/teamConfigUtils";
+import { teamSetUptimes } from "@/domain/team/teamDeltas";
 import type { TeamComp, TeamSetupConfig } from "@/domain/team/types";
 import { collectOwnedWeaponCopies } from "@/domain/team/weaponCopies";
 import {
@@ -365,7 +366,14 @@ function scoreReference(
       combo,
       sheets,
       context,
-      buildBuffOverrides(combo.lines, team, sheets, context, userBuffOverrides)
+      buildBuffOverrides(
+        combo.lines,
+        team,
+        sheets,
+        context,
+        userBuffOverrides,
+        teamSetUptimes(setupConfig.damage)
+      )
     ).totalDamage;
     return Number.isFinite(damage) && damage > 0 ? damage : null;
   } catch {

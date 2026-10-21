@@ -1821,6 +1821,15 @@ export const i18nUiData = {
       zh: "充能不够时放弃套装",
     },
     dpsSeconds: { en: "s", zh: "秒" },
+    setUptime: { en: "Set uptime", zh: "套装覆盖率" },
+    setUptimeTip: {
+      en: "{0}: lasts {1}s after its trigger. Default {2}%; clear to restore it",
+      zh: "{0}：触发后持续{1}秒。默认{2}%，清空即恢复默认",
+    },
+    setUptimeNeedsRotation: {
+      en: "Enter the rotation length to estimate uptime",
+      zh: "填写循环时长以估算覆盖率",
+    },
     rollMultiplier: { en: "Roll Growth", zh: "词条成长" },
     substatBudget: {
       en: "Rolls Count",

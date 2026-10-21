@@ -27,10 +27,7 @@ import {
   buildWeaponChoiceCharConfigs,
   getHigherTierEquippedArtifactIds,
 } from "@/domain/team/teamConfigUtils";
-import {
-  teamCalculationInputs,
-  teamCompToArrays,
-} from "@/domain/team/teamDeltas";
+import { teamCompToArrays } from "@/domain/team/teamDeltas";
 import type {
   ChoiceResultCache,
   TeamComp,
@@ -149,7 +146,7 @@ export function BuildComparisonPanel({
     teamComp,
     configs,
     objectiveCombo,
-    damage: teamCalculationInputs(setupConfig).damage,
+    damage: setupConfig.damage,
     combat: setupConfig.combatOptions,
     requirements: setupConfig.charConfigs,
   });

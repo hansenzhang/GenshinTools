@@ -37,7 +37,7 @@ import type {
   LineupSolverTeam,
 } from "@/domain/team/lineupSolverTypes";
 import type { EncounterMode } from "@/domain/team/lineupTypes";
-import { teamCalculationInputs } from "@/domain/team/teamDeltas";
+import { normalizeTeamSetupConfig } from "@/domain/team/teamDeltas";
 import type { OptPhase } from "@/domain/team/types";
 import { useActiveAccountData } from "@/hooks/useActiveAccount";
 import {
@@ -196,7 +196,7 @@ export function useLineupJob(
           {
             template,
             teamComp,
-            setupConfig: teamCalculationInputs(
+            setupConfig: normalizeTeamSetupConfig(
               configsByTeamId[teamComp.id] ?? getSetupConfig(teamComp.id)
             ),
           },

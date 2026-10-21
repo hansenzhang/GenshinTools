@@ -16,7 +16,6 @@ import {
   normalizeTeamSetupConfig,
   setTeamDeltaGlobalOrder,
   type TeamCompDelta,
-  teamCalculationInputs,
   teamCompInputToComp,
   teamCompToArrays,
   teamCompToExportedTeam,
@@ -264,11 +263,7 @@ export const useTeamStore = create<TeamState>()(
           }
           refreshDerivedTeamState(state);
           touchTeamState(state);
-          if (
-            JSON.stringify(teamCalculationInputs(current)) !==
-            JSON.stringify(teamCalculationInputs(nextConfig))
-          )
-            useTeamResultCacheStore.getState().clearForTeam(id);
+          useTeamResultCacheStore.getState().clearForTeam(id);
         });
       },
 
@@ -470,7 +465,7 @@ export const useTeamStore = create<TeamState>()(
     })),
     {
       name: "team-builder-storage",
-      version: 25,
+      version: 26,
       migrate: migrateTeamStore,
       partialize: (state) =>
         ({

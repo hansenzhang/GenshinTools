@@ -622,6 +622,11 @@ export function migrateTeamStore(
   //   damage: { calcContext?: { enemyLevel?, enemyRes?, ... }, combo?, ... }
   // Absent values keep their meaning (no saved rotation length; every element
   // uses enemyRes), so nothing is synthesized here.
+  // v26 adds optional damage.setUptimes (share per artifact set id) and gives
+  // rotationSeconds a second meaning: it prices timed set effects' default
+  // uptime. v25 damage configs had no setUptimes; absent keeps the derived
+  // default, so nothing is synthesized. Results cached at full uptime are
+  // dropped by the result cache's v8 migration.
 
   delete state.teams;
   return state;

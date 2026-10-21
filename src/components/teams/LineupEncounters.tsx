@@ -58,12 +58,15 @@ export function NumberField({
   value,
   placeholder,
   unit,
+  hideLabel,
   onCommit,
 }: {
   label: string;
   value: number | null;
   placeholder?: string;
   unit?: string;
+  /** Keep the label for screen readers only, e.g. beside an icon. */
+  hideLabel?: boolean;
   onCommit: (value: number | null) => void;
 }) {
   const input = useDeferredTextInput(
@@ -76,7 +79,7 @@ export function NumberField({
   );
   return (
     <div className="flex items-center gap-1">
-      <span className={LABEL_CLS}>{label}</span>
+      {!hideLabel && <span className={LABEL_CLS}>{label}</span>}
       <Input
         type="text"
         inputMode="decimal"

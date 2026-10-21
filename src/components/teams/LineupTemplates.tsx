@@ -13,7 +13,10 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { useLanguage } from "@/contexts/LanguageContext";
+import { TeamBuild } from "@/domain/combat/damage/core/teamBuild";
+import { resolveTeamObjective } from "@/domain/combat/lineup/compositions";
 import { elements } from "@/domain/enums";
+import type { AccountData } from "@/domain/models";
 import { characterStatsResource } from "@/domain/reference/stats";
 import {
   calibratedMargin,
@@ -28,11 +31,14 @@ import type {
   Encounter,
   TeamTemplate,
 } from "@/domain/team/lineupTypes";
+import { buildTeamSlotConfigs } from "@/domain/team/teamConfigUtils";
 import {
   teamCompToArrays,
+  teamSetUptimes,
   withRotationSeconds,
+  withSetUptime,
 } from "@/domain/team/teamDeltas";
-import type { TeamComp } from "@/domain/team/types";
+import type { TeamComp, TeamSetupConfig } from "@/domain/team/types";
 import { useActiveAccountData } from "@/hooks/useActiveAccount";
 import { useResource } from "@/hooks/useResource";
 import { cn } from "@/lib/utils";
@@ -45,6 +51,7 @@ import {
   NumberField,
   useEncounterLabel,
 } from "./LineupEncounters";
+import { SetUptimeFields } from "./SetUptimeFields";
 
 const SELECT_TRIGGER_CLS =
   "h-8 w-auto min-w-0 max-w-full gap-1.5 border-primary/40 bg-primary/10 px-3 text-xs font-semibold text-foreground hover:bg-primary/15 [&>span]:truncate";
@@ -615,6 +622,16 @@ function TemplateCard({
         />
         {deleteButton}
       </div>
+      <TemplateSetUptimes
+        team={team}
+        setupConfig={setupConfig}
+        accountData={accountData}
+        onChange={(setId, share) =>
+          updateTeamSetupConfig(team.id, (config) =>
+            withSetUptime(config, setId, share)
+          )
+        }
+      />
       {!setupConfig.damage?.combo && (
         <p className="text-xs text-muted-foreground">
           {t.ui("lineup.noSavedRotation")}
@@ -694,5 +711,47 @@ export function LineupTemplates() {
         </div>
       )}
     </section>
+  );
+}
+
+/** Uptime of the timed sets the team wears, scored on its rotation. Sets a
+ *  lineup moves to another member keep the share set here. */
+function TemplateSetUptimes({
+  team,
+  setupConfig,
+  accountData,
+  onChange,
+}: {
+  team: TeamComp;
+  setupConfig: TeamSetupConfig;
+  accountData: AccountData | null;
+  onChange: (setId: string, share: number | null) => void;
+}) {
+  const effects = useMemo(() => {
+    const configs = buildTeamSlotConfigs(team, setupConfig, accountData);
+    if (configs.length === 0) return [];
+    try {
+      const build = new TeamBuild(
+        configs,
+        setupConfig.combatOptions ?? {},
+        setupConfig.damage?.enemyAura,
+        setupConfig.damage?.extraBuffs
+      );
+      const objective = resolveTeamObjective(setupConfig.damage, build);
+      return build.getTimedSetEffects(
+        objective.lines,
+        teamSetUptimes(setupConfig.damage)
+      );
+    } catch {
+      return [];
+    }
+  }, [team, setupConfig, accountData]);
+  return (
+    <SetUptimeFields
+      effects={effects}
+      overrides={setupConfig.damage?.setUptimes}
+      hasRotationSeconds={setupConfig.damage?.rotationSeconds != null}
+      onChange={onChange}
+    />
   );
 }

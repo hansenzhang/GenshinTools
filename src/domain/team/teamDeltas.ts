@@ -4,6 +4,7 @@ import {
   type PresetDelta,
 } from "@/domain/build/presetDelta";
 import { resolveReleasedWeaponId } from "@/domain/build/weaponIds";
+import type { SetUptimeSettings } from "@/domain/combat/damage/types";
 import type { ArtifactSetConfig } from "@/domain/models";
 import type {
   ExportedArtifact,
@@ -12,6 +13,7 @@ import type {
   TeamComp,
   TeamCompData,
   TeamCompInput,
+  TeamDamageConfig,
   TeamSetupConfig,
 } from "@/domain/team/types";
 
@@ -213,15 +215,33 @@ export function normalizeTeamSetupConfig(
   };
 }
 
-/** The parts of a team setup that calculated results depend on. Rotation
- *  length only turns rotation damage into DPS, so it is left out and
- *  changing it keeps optimizer and comparison results valid. */
-export function teamCalculationInputs(
-  config: Partial<TeamSetupConfig> = {}
+/** What prices the team's timed set effects. */
+export function teamSetUptimes(
+  damage: TeamDamageConfig | undefined
+): SetUptimeSettings {
+  return {
+    rotationSeconds: damage?.rotationSeconds,
+    overrides: damage?.setUptimes,
+  };
+}
+
+/** The setup with one set's uptime share (0–1); null restores the default. */
+export function withSetUptime(
+  config: TeamSetupConfig,
+  setId: string,
+  share: number | null
 ): TeamSetupConfig {
-  const { damage, ...rest } = normalizeTeamSetupConfig(config);
-  const { rotationSeconds: _, ...inputs } = damage ?? {};
-  return Object.keys(inputs).length > 0 ? { ...rest, damage: inputs } : rest;
+  const { setUptimes, ...damage } = config.damage ?? {};
+  const { [setId]: _, ...rest } = setUptimes ?? {};
+  const next =
+    share == null
+      ? rest
+      : { ...rest, [setId]: Math.min(1, Math.max(0, share)) };
+  return {
+    ...config,
+    damage:
+      Object.keys(next).length > 0 ? { ...damage, setUptimes: next } : damage,
+  };
 }
 
 /** The setup with a saved rotation length; null or a non-positive value

@@ -36,6 +36,7 @@ import type {
 } from "@/domain/combat/damage/types";
 import { resolveCalcContext } from "@/domain/combat/damage/utils";
 import { formatBuffStats } from "@/domain/team/displayFormatter";
+import { teamSetUptimes } from "@/domain/team/teamDeltas";
 import type {
   TeamComp,
   TeamInvestmentConfig,
@@ -95,6 +96,7 @@ export function InvestmentPanel({
     comboOverrides: investment.legacyCountOverrides,
     minErOverrides: investment.minErOverrides,
     calcContext: resolveCalcContext(setupConfig.damage?.calcContext),
+    setUptimes: teamSetUptimes(setupConfig.damage),
     baselineConstellations: starts,
     futureCountChanges: investment.futureCountChanges,
     absoluteCountTargets: investment.absoluteCountTargets,

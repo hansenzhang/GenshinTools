@@ -67,11 +67,20 @@ export type BuffSource = {
   /** Max activation count per rotation. Greedy allocation distributes stacks
    *  across formula parts to maximize total damage. */
   maxStacks?: number;
+  /** Seconds the effect lasts after its trigger. Set on timed artifact set
+   *  effects, whose uptime is priced from the team's rotation length. */
+  duration?: number;
   /** Display-only element hint (e.g. for gleam resonance icon). */
   element?: Element;
 };
 /** buffKey → { partIndex → activatedHits } */
 export type BuffActivationMap = Record<string, Record<number, number>>;
+/** What prices a timed set effect's uptime: the team's rotation length and
+ *  the shares the user set per artifact set id (0–1). */
+export type SetUptimeSettings = {
+  rotationSeconds?: number;
+  overrides?: Record<string, number>;
+};
 /** Character field state — "on" = on-field, "off" = off-field. */
 export type FieldState = "on" | "off";
 

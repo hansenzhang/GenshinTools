@@ -1,6 +1,7 @@
 import type {
   CalcContext,
   ComboFormula,
+  SetUptimeSettings,
   TeamSlotConfig,
 } from "@/domain/combat/damage/types";
 import type { Rarity } from "@/domain/enums";
@@ -130,6 +131,8 @@ export type AnalyzerOptions = {
   absoluteCountTargets?: InvestmentCountTarget[];
   singleObjective?: boolean;
   ignoredContributorIds?: string[];
+  /** Prices timed set effects' uptime. */
+  setUptimes?: SetUptimeSettings;
 };
 // ─── Tier Snapshot IDs ───
 export type TierSnapshot = {

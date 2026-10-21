@@ -85,6 +85,7 @@ class TenacityOfTheMillelith4pc extends ArtifactSetBase {
         id: this.artifactSetId,
         triggers: ["E"],
         noStackId: this.artifactSetId,
+        duration: 3,
       },
       { receiver: "team" },
       [{ key: "atk%", value: 0.2 }]
@@ -251,6 +252,7 @@ class ArchaicPetra4pc extends ArtifactSetBase {
                 id: this.artifactSetId,
                 triggers: ["crystallize"],
                 noStackId: this.artifactSetId,
+                duration: 10,
               },
               {
                 receiver: "team",
@@ -358,6 +360,7 @@ class NoblesseOblige4pc extends ArtifactSetBase {
         id: this.artifactSetId,
         triggers: ["Q"],
         noStackId: "noblesse-oblige-atk",
+        duration: 12,
       },
       { receiver: "team" },
       [{ key: "atk%", value: 0.2 }]
@@ -378,6 +381,7 @@ class Instructor4pc extends ArtifactSetBase {
         id: this.artifactSetId,
         triggers: ["on-reaction"],
         noStackId: this.artifactSetId,
+        duration: 8,
       },
       { receiver: "team" },
       [{ key: "em", value: 120 }]
@@ -416,6 +420,7 @@ class ViridescentVenerer4pc extends ArtifactSetBase {
             id: this.artifactSetId,
             triggers: ["swirl"],
             noStackId: this.artifactSetId,
+            duration: 10,
           },
           { receiver: "team", filter: { elements: elements } },
           [{ key: "resReduction%", value: 0.4 }]
@@ -678,6 +683,7 @@ class DeepwoodMemories4pc extends ArtifactSetBase {
         id: this.artifactSetId,
         triggers: ["E", "Q"],
         noStackId: this.artifactSetId,
+        duration: 8,
       },
       { receiver: "team", filter: { elements: ["Dendro"] } },
       [{ key: "resReduction%", value: 0.3 }]
@@ -1020,6 +1026,8 @@ class ScrollOfTheHero4pc extends ArtifactSetBase {
           id: this.artifactSetId,
           triggers: ["elemental-reaction"],
           noStackId: this.artifactSetId,
+          // 12% lasts 15 s; the Nightsoul 28% lasts 20 s.
+          duration: bonus > 0.12 ? 20 : 15,
         },
         {
           receiver: "team",
@@ -1109,6 +1117,7 @@ class SilkenMoonsSerenade4pc extends ArtifactSetBase {
           id: this.artifactSetId,
           triggers: ["elemental-dmg"],
           noStackId: "gleaming-moon-set-reaction-dmg",
+          duration: 8,
         },
         {
           receiver: "team",
@@ -1128,6 +1137,7 @@ class SilkenMoonsSerenade4pc extends ArtifactSetBase {
             id: this.artifactSetId,
             triggers: ["elemental-dmg"],
             noStackId: this.artifactSetId,
+            duration: 8,
           },
           { receiver: "team" },
           [{ key: "em", value: 60 * moonLevel }]
@@ -1448,6 +1458,7 @@ class CelestialGift4pc extends ArtifactSetBase {
           id: this.artifactSetId,
           triggers: ["E"],
           noStackId: `${this.artifactSetId}-${wielderElement}`,
+          duration: 20,
         },
         { receiver: "team", filter: { elements: [wielderElement] } },
         [{ key: "dmg%", value }]
@@ -1469,6 +1480,7 @@ class CelestialGift4pc extends ArtifactSetBase {
               id: this.artifactSetId,
               triggers: ["E"],
               noStackId: `${this.artifactSetId}-${elem}`,
+              duration: 20,
             },
             { receiver, filter: { elements: [elem] } },
             [{ key: "dmg%", value: 0.4 }]

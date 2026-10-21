@@ -234,8 +234,11 @@ export interface TeamDamageConfig {
   formulaMode?: "single" | "combo";
   combo?: ComboFormula | null;
   /** Seconds one rotation takes; rotation damage ÷ this is the team's DPS.
-   *  Display and lineup input only: calculated damage does not depend on it. */
+   *  It also prices the default uptime of timed set effects. */
   rotationSeconds?: number;
+  /** Uptime share (0–1) per artifact set id for timed set effects; absent
+   *  sets use the default derived from rotationSeconds. */
+  setUptimes?: Record<string, number>;
 }
 
 export interface TeamEnergyConfig {

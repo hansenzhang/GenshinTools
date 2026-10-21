@@ -57,6 +57,7 @@ import {
   buildTeamSlotConfigs,
   detectEquippedSets,
 } from "@/domain/team/teamConfigUtils";
+import { teamSetUptimes } from "@/domain/team/teamDeltas";
 import type {
   CharOptConfig,
   OptFailReason,
@@ -307,6 +308,7 @@ export function prepareTeamSetsJob(
     configs,
     combo,
     userBuffOverrides: request.userBuffOverrides,
+    setUptimes: teamSetUptimes(request.setupConfig.damage),
     combatOptions: request.setupConfig.combatOptions ?? {},
     enemyAura: request.setupConfig.damage?.enemyAura,
     extraBuffs: request.setupConfig.damage?.extraBuffs,
@@ -496,7 +498,8 @@ export async function optimizeAssignmentOnAccount(
           team,
           baseSheets,
           request.displayContext,
-          request.userBuffOverrides
+          request.userBuffOverrides,
+          teamSetUptimes(request.setupConfig.damage)
         ),
       },
       inventory: inventory.availableArtifacts.filter(usable),

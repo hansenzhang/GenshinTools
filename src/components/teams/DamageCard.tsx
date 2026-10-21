@@ -50,6 +50,7 @@ import type {
   CritMode,
   DisplayPart,
   DisplayResult,
+  SetUptimeSettings,
 } from "@/domain/combat/damage/types";
 import type { GeneratorResult } from "@/domain/combat/generator/generator";
 import type { MainStat, MainStatSlot, Slot } from "@/domain/enums";
@@ -62,7 +63,11 @@ import type {
 import { charactersById } from "@/domain/reference/catalog";
 import { fmtDamage } from "@/domain/team/displayFormatter";
 import { toStatSheets } from "@/domain/team/teamConfigUtils";
-import { withRotationSeconds } from "@/domain/team/teamDeltas";
+import {
+  teamSetUptimes,
+  withRotationSeconds,
+  withSetUptime,
+} from "@/domain/team/teamDeltas";
 import type {
   OptFailReason,
   TeamComp,
@@ -92,6 +97,7 @@ import {
   RollQualityInputs,
   StellarDirectCoeffInput,
 } from "./GeneratorControls";
+import { SetUptimeFields } from "./SetUptimeFields";
 import { type ReuseEntry, StatSheetPanel } from "./StatSheetPanel";
 import { SwapGuide } from "./SwapGuide";
 import { TeamCharacterGrid } from "./TeamCharacterGrid";
@@ -153,6 +159,7 @@ function ComboBreakdown({
   currentCaveats,
   dpsSeconds,
   setDpsSeconds,
+  setUptimes,
 }: {
   characters: (string | null)[];
   lineDamages: { perHit: number; total: number }[];
@@ -172,6 +179,7 @@ function ComboBreakdown({
   currentCaveats?: string[];
   dpsSeconds?: string;
   setDpsSeconds?: (v: string) => void;
+  setUptimes?: SetUptimeSettings;
 }) {
   const allFormulaIds = useMemo(
     () => teamBuild.catalog.getFormulaIds(),
@@ -305,8 +313,20 @@ function ComboBreakdown({
   const comboDefaults = useMemo(() => {
     if (activeLines.length === 0) return undefined;
     const sheets = toStatSheets(teamCharIds, artifactsByChar);
-    return teamBuild.getComboFormulaDefaults(activeLines, sheets, calcContext);
-  }, [teamBuild, activeLines, teamCharIds, artifactsByChar, calcContext]);
+    return teamBuild.getComboFormulaDefaults(
+      activeLines,
+      sheets,
+      calcContext,
+      setUptimes
+    );
+  }, [
+    teamBuild,
+    activeLines,
+    teamCharIds,
+    artifactsByChar,
+    calcContext,
+    setUptimes,
+  ]);
 
   const focusedComboActivation = useMemo(() => {
     if (!focusedLine || !comboDefaults) return undefined;
@@ -1013,6 +1033,7 @@ function ComboResultView({
   preferredMainStats,
   onPreferredMainStatsChange,
   preferredMainStatsDisabled,
+  setUptimes,
 }: {
   displayResult: DisplayResult;
   comboLines: ComboLine[];
@@ -1044,6 +1065,7 @@ function ComboResultView({
     stat: MainStat | null
   ) => void;
   preferredMainStatsDisabled?: boolean;
+  setUptimes?: SetUptimeSettings;
 }) {
   const allFormulaIds = useMemo(
     () => teamBuild.catalog.getFormulaIds(),
@@ -1069,7 +1091,8 @@ function ComboResultView({
     const defaults = teamBuild.getComboFormulaDefaults(
       activeLines,
       sheets,
-      calcContext
+      calcContext,
+      setUptimes
     );
     return Object.entries(displayResult.partsByFormula).map(([fKey, parts]) => {
       const [charId, formulaId] = fKey.split(".");
@@ -1122,6 +1145,7 @@ function ComboResultView({
     calcContext,
     comboId,
     allFormulaIds,
+    setUptimes,
   ]);
 
   return (
@@ -1173,6 +1197,7 @@ function ComboResultView({
         setDpsSeconds={setDpsSeconds}
         artifactsByChar={artifactsByChar}
         calcContext={calcContext}
+        setUptimes={setUptimes}
       />
       {displayResult && (
         <BuffLedger
@@ -1711,6 +1736,29 @@ export function DamageCard({
     [onSetupConfigChange]
   );
 
+  const setUptimes = useMemo(
+    () => teamSetUptimes(setupConfig.damage),
+    [setupConfig.damage]
+  );
+  const timedSetEffects = useMemo(
+    () =>
+      teamBuild?.getTimedSetEffects(
+        (comboLines ?? []).filter((line) => line.count > 0),
+        setUptimes
+      ) ?? [],
+    [teamBuild, comboLines, setUptimes]
+  );
+  const uptimeFields = (
+    <SetUptimeFields
+      effects={timedSetEffects}
+      overrides={damageConfig.setUptimes}
+      hasRotationSeconds={damageConfig.rotationSeconds != null}
+      onChange={(setId, share) =>
+        onSetupConfigChange((config) => withSetUptime(config, setId, share))
+      }
+    />
+  );
+
   // Current tab's total damage for comparison in optimize tab
   const currentTotal = useMemo(() => {
     return currentDisplayResult?.totalDamage ?? 0;
@@ -1833,6 +1881,7 @@ export function DamageCard({
           <div className={CONTROLS_CLS}>
             <EnemyFields {...ctxProps} />
             {hasStellarConduct && <StellarDirectCoeffFields {...ctxProps} />}
+            {uptimeFields}
           </div>
           {currentDisplayResult && teamBuild ? (
             formulaMode === "single" && resolvedFormula ? (
@@ -1856,6 +1905,7 @@ export function DamageCard({
               />
             ) : comboLines ? (
               <ComboResultView
+                setUptimes={setUptimes}
                 displayResult={currentDisplayResult}
                 comboLines={comboLines}
                 comboId={comboId}
@@ -1922,6 +1972,7 @@ export function DamageCard({
             <div className={CONTROLS_CLS}>
               <EnemyFields {...ctxProps} />
               {hasStellarConduct && <StellarDirectCoeffFields {...ctxProps} />}
+              {uptimeFields}
               <div className="flex items-center gap-0.5 md:gap-1">
                 <span className={LABEL_CLS}>{t.ui("teamComp.timeBudget")}</span>
                 <Select
@@ -2210,6 +2261,7 @@ export function DamageCard({
                 />
               ) : comboLines ? (
                 <ComboResultView
+                  setUptimes={setUptimes}
                   displayResult={optimizedDisplayResult}
                   comboLines={comboLines}
                   comboId={comboId}
@@ -2292,6 +2344,7 @@ export function DamageCard({
             <EnemyFields {...ctxProps} />
             {hasStellarConduct && <StellarDirectCoeffFields {...ctxProps} />}
             <RollQualityFields {...ctxProps} />
+            {uptimeFields}
             <ActionButton
               onClick={handleGenerate}
               disabled={genComputing || !hasActiveFormula}
@@ -2355,6 +2408,7 @@ export function DamageCard({
               />
             ) : comboLines ? (
               <ComboResultView
+                setUptimes={setUptimes}
                 displayResult={genDisplayResult}
                 comboLines={comboLines}
                 comboId={comboId}

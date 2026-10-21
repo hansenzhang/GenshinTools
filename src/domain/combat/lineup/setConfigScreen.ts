@@ -39,6 +39,7 @@ import type {
   ComboFormula,
   ExtraBuff,
   OptionMap,
+  SetUptimeSettings,
   TeamSlotConfig,
 } from "../damage/types";
 import { runGenerator } from "../generator/generator";
@@ -90,6 +91,7 @@ export interface SetScreenInput {
   /** Active combo lines only (count > 0, formula exists). */
   combo: ComboFormula;
   userBuffOverrides?: Record<string, BuffActivationMap>;
+  setUptimes?: SetUptimeSettings;
   combatOptions: OptionMap;
   enemyAura?: Element;
   extraBuffs?: ExtraBuff[];
@@ -165,7 +167,8 @@ export function evaluateAssignment(
       team,
       sheets,
       input.displayContext,
-      input.userBuffOverrides
+      input.userBuffOverrides,
+      input.setUptimes
     );
     const damage = team.getComboDamageResult(
       input.combo,
@@ -261,7 +264,8 @@ export function heldEvaluator(
       team,
       sheets,
       input.displayContext,
-      input.userBuffOverrides
+      input.userBuffOverrides,
+      input.setUptimes
     );
     return (next) =>
       team.getComboDamageResult(

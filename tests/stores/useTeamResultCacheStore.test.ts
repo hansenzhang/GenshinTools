@@ -62,7 +62,7 @@ describe("migrateTeamResultCacheStore", () => {
     expect(useTeamResultCacheStore.getState().resultsByTeamId).toEqual({});
     expect(
       JSON.parse(window.localStorage.getItem("team-result-cache")!).version
-    ).toBe(7);
+    ).toBe(8);
     window.localStorage.removeItem("team-result-cache");
   });
 
@@ -96,12 +96,12 @@ describe("migrateTeamResultCacheStore", () => {
     await useTeamResultCacheStore.persist.rehydrate();
     expect(useTeamResultCacheStore.getState().resultsByTeamId).toEqual({});
     expect(JSON.parse(localStorage.getItem("team-result-cache")!).version).toBe(
-      7
+      8
     );
     localStorage.removeItem("team-result-cache");
   });
 
-  it("preserves current v7 results", () => {
+  it("clears v7 results priced with timed set effects at full uptime", () => {
     const resultsByTeamId = {
       "team-1": {
         weaponChoiceResult: { mode: "weapon", timestamp: 1, perCharacter: {} },
@@ -110,6 +110,18 @@ describe("migrateTeamResultCacheStore", () => {
     };
     expect(
       migrateTeamResultCacheStore({ resultsByTeamId }, 7).resultsByTeamId
+    ).toEqual({});
+  });
+
+  it("preserves current v8 results", () => {
+    const resultsByTeamId = {
+      "team-1": {
+        weaponChoiceResult: { mode: "weapon", timestamp: 1, perCharacter: {} },
+        weaponChoiceInputKey: "inputs",
+      },
+    };
+    expect(
+      migrateTeamResultCacheStore({ resultsByTeamId }, 8).resultsByTeamId
     ).toBe(resultsByTeamId);
   });
 
@@ -117,7 +129,7 @@ describe("migrateTeamResultCacheStore", () => {
     localStorage.setItem(
       "team-result-cache",
       JSON.stringify({
-        version: 7,
+        version: 8,
         state: {
           resultsByTeamId: {
             team: {

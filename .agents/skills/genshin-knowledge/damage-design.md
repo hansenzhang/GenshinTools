@@ -21,6 +21,7 @@ Engine for computing Genshin Impact character damage with team buffs, reactions,
 | `calc/teamBuild.ts` | TeamBuild (team orchestration, combo evaluation, display results) |
 | `calc/combo.ts` | Combo evaluation (evaluateCombo, evaluateComboLine) |
 | `calc/stackAllocation.ts` | Greedy allocator for maxStacks-limited buffs |
+| `core/setUptime.ts` | Uptime of timed artifact set effects (`duration`) over the rotation |
 | `calc/formulaCompiler.ts` | Expression compiler for optimizer (AST-based) |
 | `calc/formulaUtil.ts` | Formula utility helpers |
 | `calc/teamResonance.ts` | Team elemental resonance buffs |
@@ -100,6 +101,7 @@ BuffSource {
   triggers?: string[]    // Activation conditions (display-only)
   noStackId?: string     // Dedup key — same noStackId across buffs → only highest value applies per stat key
   maxStacks?: number     // Limited activation count — greedy allocator distributes across formula parts
+  duration?: number      // Seconds after the trigger; timed artifact set effects only (see below)
   element?: Element      // Display hint
 }
 ```
@@ -121,6 +123,8 @@ All in `calc/statBuff.ts`.
 **Anonymous subclass pattern** — for one-off dynamic buffs, extend `StatBuff` inline and override `dynamicBuffs()`.
 
 **maxStacks:** When present, the greedy allocator (`stackAllocation.ts`) distributes limited activations across formula parts to maximize damage. Valid on any buff — team/other buffs, self buffs in the regular `buffs` array, or `bespokeBuffs` (per-FormulaPart). For "first cast only" self effects, prefer `bespokeBuffs` with `maxStacks` equal to the part's hit count, attached to every part of the affected formula — this scopes the budget to that specific cast. A regular self buff with `maxStacks` allocates the budget across the whole combo instead; use it when that matches the game text. Per-character independent stacks: emit one buff per teammate with `charId`.
+
+**duration:** On an `artifactSet` buff, the 4pc text's duration. The effect then counts for its uptime `u` over the rotation (`u · hits` on every part it reaches): the team's `damage.setUptimes[setId]`, or a default from `rotationSeconds` and the wearer's casts of the triggering ability (`core/setUptime.ts`). Without a rotation length, or for a driver or off-field applicator, `u` is 100%. Add it only to timed effects whose game text names a duration; see docs/design/lineup-solver.md, "Decision: set uptime from rotation length".
 
 **noStackId:** When multiple buffs share the same `noStackId`, only the highest value applies per stat key. Used for weapon/artifact series that shouldn't stack (e.g., Millennial Movement).
 

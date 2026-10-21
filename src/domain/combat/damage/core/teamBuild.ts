@@ -21,6 +21,7 @@ import type {
   ReactionOverride,
   ResolvedBuff,
   ResolvedStatEntry,
+  SetUptimeSettings,
   TeamSlotConfig,
 } from "../types";
 import { filterMatchesTag } from "../utils";
@@ -43,6 +44,11 @@ import {
   evaluateFormulaDisplay,
 } from "./formulaEval";
 import { computeSubstatMarginals } from "./marginalGain";
+import {
+  resolveTimedSetEffects,
+  type TimedSetEffect,
+  timedSetActivations,
+} from "./setUptime";
 import {
   type ComboLineEval,
   collectStackLimitedBuffs,
@@ -1805,12 +1811,14 @@ export class TeamBuild {
     sheets: Record<string, StatSheet>,
     ctx: CalcContext,
     _rxnOverrides?: Record<string, ReactionOverride>,
-    perLineUserOverrides?: Map<number, BuffActivationMap>
+    perLineUserOverrides?: Map<number, BuffActivationMap>,
+    setUptimes?: SetUptimeSettings
   ): Record<number, BuffActivationMap> | undefined {
     if (activeLines.length === 0) return undefined;
 
     const { defaultActivations, stackLimited, lineEntries } =
       this.buildComboDefaults(activeLines, sheets, ctx);
+    const uptimeActivations = this.timedSetActivations(activeLines, setUptimes);
 
     const result: Record<number, BuffActivationMap> = {};
 
@@ -1830,6 +1838,8 @@ export class TeamBuild {
         // merged already contains the stack-limited activation
         lineActivation = { ...merged };
       }
+      // Timed set effects below full uptime; user activations override them.
+      lineActivation = { ...lineActivation, ...uptimeActivations[lineIdx] };
 
       if (userOv && Object.keys(userOv).length > 0) {
         const lineCharId = activeLines[lineIdx].charId;
@@ -1851,6 +1861,20 @@ export class TeamBuild {
     return Object.keys(result).length > 0 ? result : undefined;
   }
 
+  /** Timed artifact set effects worn in the team, with their uptime over
+   *  this rotation. */
+  getTimedSetEffects(
+    activeLines: ComboLine[],
+    setUptimes?: SetUptimeSettings
+  ): TimedSetEffect[] {
+    return resolveTimedSetEffects(
+      this.buffLedger.allBuffs,
+      activeLines,
+      this.catalog.formulaIndex,
+      setUptimes
+    );
+  }
+
   /**
    * Compute combo-wide default activations and stack-limited buff info.
    *
@@ -1861,7 +1885,8 @@ export class TeamBuild {
   getComboFormulaDefaults(
     activeLines: ComboLine[],
     sheets: Record<string, StatSheet>,
-    ctx: CalcContext
+    ctx: CalcContext,
+    setUptimes?: SetUptimeSettings
   ): {
     perLine: BuffActivationMap[];
     stackLimited: StackLimitedBuffInfo[];
@@ -1872,7 +1897,26 @@ export class TeamBuild {
       sheets,
       ctx
     );
-    return { perLine: defaultActivations, stackLimited };
+    const uptimeActivations = this.timedSetActivations(activeLines, setUptimes);
+    const perLine = defaultActivations.map((activation, i) => ({
+      ...activation,
+      ...uptimeActivations[i],
+    }));
+    return { perLine, stackLimited };
+  }
+
+  private timedSetActivations(
+    activeLines: ComboLine[],
+    setUptimes: SetUptimeSettings | undefined
+  ): BuffActivationMap[] {
+    return timedSetActivations(
+      this.buffLedger.allBuffs,
+      this.getTimedSetEffects(activeLines, setUptimes),
+      activeLines,
+      this.catalog.formulaIndex,
+      (ib, charId) =>
+        this.couldBuffApplyToChar(ib.buff, ib.providerCharId, charId)
+    );
   }
 
   /**

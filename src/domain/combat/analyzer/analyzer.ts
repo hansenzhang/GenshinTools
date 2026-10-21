@@ -35,11 +35,13 @@ import type {
   ExtraBuff,
   OptionMap,
   ReactionOverride,
+  SetUptimeSettings,
   TeamSlotConfig,
 } from "@/domain/combat/damage/types";
 import { getSetId } from "@/domain/combat/damage/utils";
 import type { Element, Rarity } from "@/domain/enums";
 import { CharBuild } from "../damage/core/charBuild";
+import type { StatBuff } from "../damage/core/statBuff";
 import { StatSheet } from "../damage/core/statSheet";
 import { TeamBuild } from "../damage/core/teamBuild";
 import { TeamMeta } from "../damage/core/teamMeta";
@@ -76,6 +78,11 @@ const ANALYZER_CALC_CONTEXT: CalcContext = {
   substatBudget: "8_6",
 };
 const ANALYZER_ROLL_MULT = 0.85;
+
+/** Stack-limited or timed buffs need per-part activation. */
+function isPartialBuff(buff: StatBuff): boolean {
+  return buff.source.maxStacks != null || buff.source.duration != null;
+}
 
 /** Stable key for a combo line: formulaId alone for direct, formulaId:reactionType for reactions. */
 export function comboLineKey(
@@ -672,8 +679,9 @@ function assembleSheets(
  * @param charBuildCache - Optional pre-built CharBuild cache keyed by
  *   `charId:constellation:weaponId:refinement`. Avoids re-creating
  *   CharacterBase/WeaponBase/ArtifactSetBase for each evaluation.
- * @param hasAnyStackLimited - Pre-computed flag; when false, skips
- *   buffOverride computation entirely (no stack-limited buffs in any variant).
+ * @param hasPartialBuffs - Pre-computed flag; when false, skips
+ *   buffOverride computation entirely (no stack-limited or timed buffs in
+ *   any variant).
  */
 function evalWithCachedArtifacts(
   allocation: TeamInvestment,
@@ -684,8 +692,9 @@ function evalWithCachedArtifacts(
   combo: ComboFormula,
   calcContext: CalcContext,
   charBuildCache?: Map<string, CharBuild>,
-  hasAnyStackLimited?: boolean,
-  extraBuffs: ExtraBuff[] = []
+  hasPartialBuffs?: boolean,
+  extraBuffs: ExtraBuff[] = [],
+  setUptimes?: SetUptimeSettings
 ): number {
   try {
     const configs = baseConfigs.map((bc) => {
@@ -729,18 +738,19 @@ function evalWithCachedArtifacts(
     const validCombo = { ...combo, lines: validLines };
 
     let buffOverrides: Record<number, BuffActivationMap> | undefined;
-    if (validLines.length > 0 && hasAnyStackLimited !== false) {
-      // If hasAnyStackLimited is undefined (no pre-check), do the per-eval check
+    if (validLines.length > 0 && hasPartialBuffs !== false) {
+      // If hasPartialBuffs is undefined (no pre-check), do the per-eval check
       const needCheck =
-        hasAnyStackLimited === true ||
-        tb.buffLedger.allBuffs.some(
-          ({ buff }) => buff.source.maxStacks != null
-        );
+        hasPartialBuffs === true ||
+        tb.buffLedger.allBuffs.some(({ buff }) => isPartialBuff(buff));
       if (needCheck) {
         buffOverrides = tb.computeComboPartialBuffSpecs(
           validLines,
           sheets,
-          calcContext
+          calcContext,
+          undefined,
+          undefined,
+          setUptimes
         );
       }
     }
@@ -768,8 +778,9 @@ function evalAndCache(
   combo: ComboFormula,
   calcContext: CalcContext,
   charBuildCache?: Map<string, CharBuild>,
-  hasAnyStackLimited?: boolean,
-  extraBuffs: ExtraBuff[] = []
+  hasPartialBuffs?: boolean,
+  extraBuffs: ExtraBuff[] = [],
+  setUptimes?: SetUptimeSettings
 ): CachedNode {
   const id = allocationNodeId(allocation);
   const existing = cache.get(id);
@@ -785,8 +796,9 @@ function evalAndCache(
     combo,
     calcContext,
     charBuildCache,
-    hasAnyStackLimited,
-    extraBuffs
+    hasPartialBuffs,
+    extraBuffs,
+    setUptimes
   );
   const jin = computeM(allocation, configs);
   const node: CachedNode = { id, jin, allocation: { ...allocation }, damage };
@@ -966,7 +978,7 @@ async function* computePhase1(
 
 type CharBuildCacheResult = {
   charBuildCache: Map<string, CharBuild>;
-  hasAnyStackLimited: boolean;
+  hasPartialBuffs: boolean;
 };
 
 /**
@@ -975,7 +987,7 @@ type CharBuildCacheResult = {
  * constellation/refinement, each CharBuild is independent and can be reused
  * across all team combinations that share the same per-character state.
  *
- * Also pre-computes a global hasAnyStackLimited flag by checking all cached
+ * Also pre-computes a global hasPartialBuffs flag by checking all cached
  * builds' buff lists. When false, Phase 2/3 can skip buffOverride computation.
  */
 function buildCharBuildCache(
@@ -985,7 +997,7 @@ function buildCharBuildCache(
   enemyAura: Element | undefined
 ): CharBuildCacheResult {
   const charBuildCache = new Map<string, CharBuild>();
-  let hasAnyStackLimited = false;
+  let hasPartialBuffs = false;
 
   // Build a representative TeamMeta using baseline constellations.
   // Each CharBuild only reads self-constellation from teamMeta, so the
@@ -1023,11 +1035,11 @@ function buildCharBuildCache(
       const build = new CharBuild(config, teamMeta, combatOpts);
       charBuildCache.set(key, build);
 
-      // Check if this build contributes any stack-limited buffs
-      if (!hasAnyStackLimited) {
+      // Check if this build contributes any stack-limited or timed buffs
+      if (!hasPartialBuffs) {
         for (const buff of build.getAllBuffs()) {
-          if (buff.source.maxStacks != null) {
-            hasAnyStackLimited = true;
+          if (isPartialBuff(buff)) {
+            hasPartialBuffs = true;
             break;
           }
         }
@@ -1035,7 +1047,7 @@ function buildCharBuildCache(
     }
   }
 
-  return { charBuildCache, hasAnyStackLimited };
+  return { charBuildCache, hasPartialBuffs };
 }
 
 // ─── Phase 2: Exhaustive breakpoint combination evaluation ───
@@ -1055,7 +1067,7 @@ async function* computePhase2(
   }));
 
   // Pre-build CharBuild cache for all unique per-character options
-  const { charBuildCache, hasAnyStackLimited } = buildCharBuildCache(
+  const { charBuildCache, hasPartialBuffs } = buildCharBuildCache(
     charOpts,
     baseConfigs,
     combatOpts,
@@ -1097,8 +1109,9 @@ async function* computePhase2(
           activeCombo,
           opts.calcContext,
           charBuildCache,
-          hasAnyStackLimited,
-          teamBuild.extraBuffs
+          hasPartialBuffs,
+          teamBuild.extraBuffs,
+          opts.setUptimes
         );
         cache.add({ id, jin: totalM, allocation: { ...alloc }, damage });
       }
@@ -1138,7 +1151,7 @@ async function* computePhase2(
     message: `Evaluated ${count} combinations, ${cache.bestAtJin.size} M-tiers found`,
   };
 
-  return { charBuildCache, hasAnyStackLimited };
+  return { charBuildCache, hasPartialBuffs };
 }
 
 // ─── Phase 3: Constrained greedy along bestAtM parent→child edges ───
@@ -1162,7 +1175,7 @@ async function* computePhase3(
   const combatOpts = teamBuild.combatOpts;
   const enemyAura = teamBuild.enemyAura;
   const charBuildCache = charBuildCacheResult?.charBuildCache;
-  const hasAnyStackLimited = charBuildCacheResult?.hasAnyStackLimited;
+  const hasPartialBuffs = charBuildCacheResult?.hasPartialBuffs;
 
   // 1. Collect bestAtJin nodes sorted by 金
   const bestNodes = [...cache.bestAtJin.entries()]
@@ -1258,8 +1271,9 @@ async function* computePhase3(
           activeCombo,
           opts.calcContext,
           charBuildCache,
-          hasAnyStackLimited,
-          teamBuild.extraBuffs
+          hasPartialBuffs,
+          teamBuild.extraBuffs,
+          opts.setUptimes
         );
         if (!bestUp || cached.damage > bestUp.cached.damage) {
           bestUp = { cached, charId: up.charId, upgrade: up.upgrade };

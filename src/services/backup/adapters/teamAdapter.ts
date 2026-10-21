@@ -41,7 +41,7 @@ export function teamToCloud(
     {
       namespace: "teams",
       partitionKey: "all",
-      schemaVersion: 7,
+      schemaVersion: 8,
       conflictPolicy: "explicit-choice",
       isDefaultState: isDefaultTeamSnapshot(snapshot, configsByTeamId),
       payload: {
@@ -91,6 +91,8 @@ export function teamFromCloud(
   // keep their meaning and no target is synthesized during restore.
   // Cloud v7 adds optional damage.rotationSeconds and per-element RES in
   // damage.calcContext.enemyResByElement; v6 payloads restore without them.
+  // Cloud v8 adds optional damage.setUptimes; v7 payloads restore without it
+  // and use the default uptime derived from rotationSeconds.
   return {
     ...migrated,
     activePresetId: parsed.activePresetId,

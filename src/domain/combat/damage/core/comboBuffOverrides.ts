@@ -12,6 +12,7 @@ import type {
   ComboFormula,
   ComboLine,
   DisplayResult,
+  SetUptimeSettings,
 } from "../types";
 import type { StatSheet } from "./statSheet";
 import type { TeamBuild } from "./teamBuild";
@@ -53,13 +54,15 @@ export function calcComboResults(
  * @param sheets - Artifact stat sheets per character
  * @param ctx - Calc context
  * @param comboOverrides - User overrides from the buff override store (optional)
+ * @param setUptimes - Rotation length and per-set uptime overrides (optional)
  */
 export function buildBuffOverrides(
   activeLines: ComboLine[],
   build: TeamBuild,
   sheets: Record<string, StatSheet>,
   ctx: CalcContext,
-  comboOverrides?: Record<string, BuffActivationMap>
+  comboOverrides?: Record<string, BuffActivationMap>,
+  setUptimes?: SetUptimeSettings
 ): Record<number, BuffActivationMap> | undefined {
   // ── Distribute user overrides across lines ──
   const perLineUserOverrides = new Map<number, BuffActivationMap>();
@@ -120,7 +123,8 @@ export function buildBuffOverrides(
     sheets,
     ctx,
     undefined,
-    perLineUserOverrides.size > 0 ? perLineUserOverrides : undefined
+    perLineUserOverrides.size > 0 ? perLineUserOverrides : undefined,
+    setUptimes
   );
 }
 

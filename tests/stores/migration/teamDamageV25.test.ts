@@ -78,7 +78,7 @@ describe("team store v25 damage settings", () => {
     expect(damage?.calcContext?.enemyResByElement).toBeUndefined();
     expect(
       JSON.parse(localStorage.getItem("team-builder-storage")!).version
-    ).toBe(25);
+    ).toBe(26);
   });
 
   it("keeps saved rotation seconds and per-element RES, dropping invalid values", async () => {
@@ -117,7 +117,7 @@ describe("team store v25 damage settings", () => {
     expect(damage?.calcContext).toEqual({ enemyRes: 0.2 });
   });
 
-  it("round-trips both settings through cloud v7 and restores v6 payloads unchanged", () => {
+  it("round-trips both settings through cloud and restores v6 payloads unchanged", () => {
     const old = v24State();
     const v6 = teamFromCloud([
       {
@@ -144,13 +144,13 @@ describe("team store v25 damage settings", () => {
         "team-1": { ...v6.configsByTeamId["team-1"], damage },
       },
     });
-    expect(partition.schemaVersion).toBe(7);
+    expect(partition.schemaVersion).toBe(8);
     expect(teamFromCloud([partition]).configsByTeamId["team-1"].damage).toEqual(
       damage
     );
   });
 
-  it("keeps cached results when only the rotation length changes", () => {
+  it("clears cached results when the rotation length changes", () => {
     useTeamStore.getState().importTeams({
       teams: [
         {
@@ -172,8 +172,9 @@ describe("team store v25 damage settings", () => {
       damage: { ...config.damage, rotationSeconds: 20 },
     }));
     expect(
-      useTeamResultCacheStore.getState().getForTeam(teamId)?.weaponChoiceResult
-    ).toBeDefined();
+      useTeamResultCacheStore.getState().getForTeam(teamId)
+    ).toBeUndefined();
+    cache.setChoiceResult(teamId, "weapon", choiceResult, "key");
 
     update(teamId, (config) => ({
       ...config,

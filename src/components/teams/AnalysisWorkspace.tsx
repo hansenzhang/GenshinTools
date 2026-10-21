@@ -84,10 +84,7 @@ import {
   resolveSelectedFormula,
   toStatSheets,
 } from "@/domain/team/teamConfigUtils";
-import {
-  teamCalculationInputs,
-  teamCompToArrays,
-} from "@/domain/team/teamDeltas";
+import { teamCompToArrays, teamSetUptimes } from "@/domain/team/teamDeltas";
 import type {
   CharOptConfig,
   TeamComp,
@@ -646,6 +643,11 @@ export function AnalysisWorkspace({
     return { ...displayComboBase, lines };
   }, [displayComboBase, ignoredCharIds, teamBuild]);
 
+  const setUptimes = useMemo(
+    () => teamSetUptimes(setupConfig.damage),
+    [setupConfig.damage]
+  );
+
   // Build per-line BuffActivationMap (defaults + user overrides)
   const buffOverrides = useMemo(() => {
     if (!teamBuild) return undefined;
@@ -661,7 +663,8 @@ export function AnalysisWorkspace({
       teamBuild,
       artifactSheets,
       displayContext,
-      formulaOverrides
+      formulaOverrides,
+      setUptimes
     );
     return r;
   }, [
@@ -670,6 +673,7 @@ export function AnalysisWorkspace({
     artifactSheets,
     displayContext,
     comboStoreOverrides,
+    setUptimes,
   ]);
 
   // ─── Damage Calculations (always via combo path) ───
@@ -1112,7 +1116,7 @@ export function AnalysisWorkspace({
   // Freeze a character's equipped artifacts from the current tab
   const calculationInputKey = JSON.stringify({
     configs,
-    damageConfig: teamCalculationInputs(setupConfig).damage,
+    damageConfig: setupConfig.damage,
     combatOptions,
     charConfigs,
     optimizerBuildMatchByChar,

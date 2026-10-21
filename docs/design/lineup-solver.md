@@ -942,3 +942,57 @@ Mizuki), beside the baseline of "P4 comparison":
 
 So the hunch holds in a weaker form: full-uptime Instructor does not move this floor, but it
 crowds the set screen enough to hide builds within the 3% tie.
+
+### Decision: set uptime from rotation length (2026-10-21)
+
+The user accepted the recommendation above, with Analysis showing the same numbers as lineups.
+
+- **Durations** live on the buff: `BuffSource.duration` (seconds after the trigger), checked against
+  the 4pc text in `src/generated/catalog/artifact_en.json`. First batch, team buffs only:
+  Instructor 8 s, Noblesse 12 s, Tenacity 3 s, VV's RES shred 10 s, Deepwood 8 s, Archaic Petra
+  10 s, Scroll of the Hero of Cinder City 15 s (Nightsoul part 20 s), Silken Moon's Serenade 8 s,
+  Celestial Gift 20 s. Self buffs (Heart of the Furnace's ATK, Scarlet Proof) and character or
+  weapon buffs can follow.
+- **One uptime per set per team**, stored as `damage.setUptimes[setId]` (a share, 0–1). Keyed by
+  set id, it follows the set to any wearer and applies to the recorded build too. Absent means the
+  derived default.
+- **Derived default** (`src/domain/combat/damage/core/setUptime.ts`): 100% without
+  `rotationSeconds`. With it, 100% when the wearer has an on-field Normal, Charged or Plunge line
+  (a driver) or an off-field line (an applicator that refreshes throughout). Otherwise
+  `min(1, casts · duration ÷ rotationSeconds)`, where casts are the wearer's line counts on the
+  abilities the trigger names (E → Skill, Q → Burst, anything else → both), and at least 1: a
+  support whose Burst deals no counted damage still casts it.
+- **Pricing**: a buff at uptime `u` activates `u · hits` on every part it can reach, on top of
+  stack-limit defaults and under the per-part activations a user sets in the buff dialog. The
+  existing activation path carries it to Analysis, the set screen, the account estimate and the
+  optimizer.
+- **Edited** next to Rotation (s) in Analysis' damage card and in the lineup template, showing the
+  default until overridden.
+- **Persistence**: rotation seconds become a calculation input (`teamCalculationInputs` keeps it),
+  so changing them clears cached results. Team store v26 and cloud v8 add the optional field (no
+  transform; absent keeps the default). The result cache moves to v8 and is cleared, because
+  results cached for a team with rotation seconds were priced at full uptime.
+
+#### As built (2026-10-21)
+
+- Durations on nine sets' team buffs in `impl/artifact4pc.ts`. Scroll's buff merges the 12% (15 s)
+  and Nightsoul 28% (20 s) parts into one value, so it takes 20 s when the wearer is Nightsoul,
+  slightly overstating the 12% part.
+- `core/setUptime.ts` derives defaults and per-line activations; `TeamBuild` layers them between
+  stack-limit defaults and user activations in `computeComboPartialBuffSpecs` and
+  `getComboFormulaDefaults`, so the buff dialog's sliders start from the priced uptime.
+- Callers pass `teamSetUptimes(damage)`: Analysis' workspace, the investment analyzer (which now
+  computes activations when any build has a timed buff, not only stack-limited ones), the set
+  screen, the set explorer's optimization and the lineup's recorded-build score.
+- UI: `SetUptimeFields` beside the enemy fields on each of the damage card's three tabs, and under
+  Rotation in each lineup template (sets the team wears, plus any with a saved share). The
+  placeholder is the default; clearing restores it.
+- `teamCalculationInputs` is gone: every setup change now clears the team's cached results.
+- Tests: `tests/domain/combat/damage/setUptime.test.ts` (defaults; half uptime prices exactly the
+  mean of on and off), `tests/stores/migration/teamDamageV26.test.ts` (v25 hydration, invalid
+  shares, cloud v7 → v8), result cache v7 → v8 clear. `npm run check` passes.
+- Not measured: a lineup replay. The 12:01 export's teams have no rotation seconds, so their
+  numbers do not change until a rotation length or share is entered.
+- Follow-ups: self timed buffs (Heart of the Furnace's ATK, Scarlet Proof), character and weapon
+  durations, and a second wearer of the same set (one share per set; `noStackId` already keeps
+  one buff).
