@@ -3,7 +3,8 @@
 Status: decisions and design, 2026-10-16. P1 is implemented as Build comparison › Team sets,
 P0 as Team Comp › Lineups (2026-10-18), P2 as Lineups › Abyss lineups and P3 as Lineups ›
 Stygian lineup (2026-10-19), with the fixes in "P3 fixes". P5 is implemented as Lineups ›
-Worth levelling (2026-10-21, "P5 levelling advisor"), with "P5 follow-ups". P4 and P6 are not.
+Worth levelling (2026-10-21, "P5 levelling advisor"), with "P5 follow-ups". P4 has one
+measured run ("P4 comparison", 2026-10-21); P6 is not done.
 Source: the feasibility study in `~/mistilteinn/reference/notes/team-solver-study.md`, which
 compares this repo with Genshin Optimizer (GO) and gcsim, and the decisions made with the user
 after it.
@@ -824,3 +825,120 @@ first make a difference, and does the joint plan need both?
   (`--budget-sec 0`), runs are deterministic and the pairwise fixes are picked before the chains,
   so dropping strongest-first matches a run without it; strongest-first can pick what
   weakest-first found, so dropping weakest-first alone is approximate.
+
+Measured on the Stygian export of 2026-10-21 12:01, replayed until done in Node (1,092 s; three
+replays ran in parallel). Margins, weakest first:
+
+| Setup | Lunar (Guardian) | Mizuki (Overseer) | Sandrone (Sculptor) | Floor |
+|---|---|---|---|---|
+| Sequential with set search, strongest first (Sandrone, Mizuki, Lunar) | ×0.508 | ×0.712 | ×1.266 | ×0.508 |
+| Sequential with set search, weakest first (Lunar, Mizuki, Sandrone) | ×0.528 | ×0.872 | ×0.914 | ×0.528 |
+| Joint leximin, every pass | ×0.528 | ×0.872 | ×0.914 | ×0.528 |
+| Joint, without strongest-first, or without the pairwise fixes | same | same | same | ×0.528 |
+| Joint, without weakest-first (approximate) | ×0.508 | ×0.712 | ×1.266 | ×0.508 |
+| Joint, pairwise fixes only, or no diversify | ×0.401 (Fischl, Bennett) | ×0.750 | ×1.000 | ×0.401 |
+
+- **Order matters, a little, and weakest first wins.** Strongest first gives the strongest boss
+  its unconstrained best (×1.266, worth nothing to the floor) and leaves Lunar the leftovers:
+  −3.8% on the floor, just past the 3% tie, and −18% on the second-weakest team.
+- **The joint plan is the weakest-first lineup exactly.** On this export, the study's (3) equals
+  (4) and (5): leximin over the found candidates adds nothing to weakest-first sequential with
+  set search. The strongest-first chain and the pairwise fixes add nothing either.
+- **The re-runs are what matter, not the MILP.** Without the chains' re-runs, the best lineup
+  the MILP can field from per-team candidates drops to ×0.401: every strong Lunar build shares
+  Sucrose or her pieces with another team. The MILP only selects among found candidates; it does
+  not search jointly.
+- **Cost**: the strongest-first chain's two re-runs took 16 s of optimizer time, of 920 s over
+  79 runs. Keeping it is cheap insurance for an export where it does find something.
+- **A re-run optimizes one assignment**: the screen's best by account estimate. The same team
+  re-run in two replays that saw different screens came out ×0.914 and ×0.870 (Sandrone), and
+  ×0.872 and ×0.889 (Mizuki), on builds whose value did not change between the replays (see
+  "Buff uptime"). The second- and third-weakest margins carry that noise.
+- **P4 on one export**: (4) − (3) is zero, well inside model error, which meets the gate's stop
+  condition. Whether one export decides it is the user's call. Not checked: the study's (1) and
+  (2) without set search, other exports, and Abyss.
+- **Open**: re-run the top two or three screened assignments in `keepClear` rather than one, to
+  take the noise out of later picks.
+
+## Buff uptime (experiment and design, 2026-10-21)
+
+The question from testing: Instructor's 4pc (team EM +120 for 8 s after the wearer triggers a
+reaction) counts on every hit of the rotation, though a support that triggers it once per 16–20 s
+rotation covers 40–50% of it. Does that skew the lineup?
+
+- **Every timed buff counts at 100%.** No buff carries a duration. Instructor, Noblesse (12 s
+  after a Burst), Tenacity (3 s after a Skill hit), VV's shred, Heart of the Furnace and the rest
+  apply to every hit, whether the wearer triggers them once or all the time.
+- **Margins are ratios to the recorded build**, so an overstated buff cancels only when a
+  candidate and the recorded build wear the same timed sets on the same kind of member. The
+  12:01 export's recorded Sandrone build wears Noblesse (Alyosha) and Tenacity (Diona); the
+  recorded Mizuki build wears Tenacity (Cryo Traveler).
+
+Experiment, worktree only (not committed): the 12:01 export's 82 candidates rescored on their own
+pieces with a set's static team buffs scaled by an uptime, as ratios to the rescored recorded
+build. Scaling the stat stands in for the mixture (by Jensen it values a partial buff slightly
+higher than `u · with + (1 − u) · without` would).
+
+| Variant | Sandrone best | Mizuki best | Lunar best (floor) | Plan's Mizuki team |
+|---|---|---|---|---|
+| As now | ×1.266, Diona in Instructor | ×1.119, Mizuki in Instructor | ×0.528 | ×0.872 |
+| Instructor 45% on every wearer | ×1.221, Diona in Tenacity | ×1.067 | ×0.528 | ×0.835 |
+| Instructor 45%, Mizuki 100% | ×1.221, Diona in Tenacity | ×1.119 | ×0.528 | ×0.872 |
+| Instructor 44%, Noblesse 67%, Tenacity 33% (≈ duration ÷ 18 s), Mizuki 100% | ×1.253, Diona in Instructor | ×1.157 | ×0.528 | ×0.902 |
+
+- Instructor at full uptime is worth 4–5% of team damage where it is worn, just above the 3% tie.
+- **Scaling Instructor alone misleads**: Diona moves to Tenacity, whose 3 s buff is overstated
+  more. Scaled together, Diona keeps Instructor and the top Sandrone builds reshuffle within 1%.
+- Mizuki wears Instructor herself and swirls on field, so her uptime is likely near full; her
+  team keeps Mizuki in Instructor in every variant.
+- The floor team (Lunar: Aubade, VV, Silken Moon) wears none of the three, so the floor does not
+  move. Its own timed sets (VV's shred, Silken Moon) were not scaled.
+
+### Using rotation length
+
+The engine already prices partial uptime: a `BuffActivationMap` gives each formula part the hits a
+buff covers, `buildStatVariants` cuts the part there, and the activation reaches the set screen,
+the account estimate and the optimizer's compiled formulas through `buildBuffOverrides`. A buff
+up a share `u` of the rotation is `u · hits` on every part it applies to, which is exact when
+damage is spread evenly (the RES phases' assumption). What is missing:
+
+1. **Durations**: no buff carries one.
+2. **How often the wearer re-triggers.** Rotation length alone gives `min(1, d ÷ R)` only for a
+   trigger the wearer fires once per rotation. An on-field driver (Mizuki) or an off-field
+   applicator (Xiangling's Pyronado, Fischl's Oz) refreshes Instructor throughout.
+3. **Rotation seconds**: none of the export's three teams has one saved (Analysis' DPS input).
+4. **Overrides follow the wearer.** A buff override's key includes the provider, so "Instructor
+   on Diona at 45%" stops applying when the solver moves Instructor to Layla, which then looks
+   better than Diona.
+
+Recommended (needs the user's decision before any code):
+
+- An uptime per timed **set** effect per team, keyed by set id so it follows the set to any
+  wearer and applies to the recorded build too. It defaults to 100%, or to `min(1, triggers · d
+  ÷ R)` when the team has rotation seconds and the wearer's rotation lines fire the trigger a
+  countable number of times (casts of E or Q); a wearer with on-field or ticking lines stays at
+  100%. Editable in the template.
+- Durations for the timed team sets first (Instructor, Noblesse, Tenacity, VV, Deepwood,
+  Archaic Petra, Scroll of the Hero of Cinder City, Silken Moon, Heart of the Furnace, Scarlet
+  Proof, …), checked against game text. Character and weapon buffs are the same across a
+  template's candidates and mostly cancel in `r`; they can follow.
+- This changes damage numbers everywhere a team has rotation seconds, not only in lineups, so
+  whether Analysis shows it too is part of the decision.
+
+Replays until done with only Instructor scaled to 45% (every wearer, and every wearer but
+Mizuki), beside the baseline of "P4 comparison":
+
+- The plan and its floor are unchanged: Lunar ×0.528, built weakest first in both; strongest
+  first gives ×0.507.
+- The Mizuki team's re-run picks Mizuki in EM 2+2, Odette in Heart of the Furnace (×0.889, r
+  ×1.186) in both variants, over the baseline's Mizuki in Instructor (×0.872, r ×1.163). That
+  build wears no Instructor 4pc, so it is worth ×0.889 in the baseline too, where the re-run
+  never tried it. Re-run screens are not traced; the likely reason is that full-uptime
+  Instructor variants filled the shortlist. It wins in the Mizuki-at-100% variant too, so the
+  crowding came from the other members' Instructor variants, not Mizuki's own.
+- The Sandrone team's re-run drops from ×0.914 to ×0.870 (Yae in Disenchantment instead of
+  2+2); neither build wears Instructor. That is the re-run's one-assignment pick, not uptime.
+- Without the chains' re-runs, neither variant fields a full lineup (the baseline: ×0.401).
+
+So the hunch holds in a weaker form: full-uptime Instructor does not move this floor, but it
+crowds the set screen enough to hide builds within the 3% tie.
