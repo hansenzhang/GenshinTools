@@ -757,3 +757,53 @@ Tests: an expected levelled piece against the mean of the roll distribution; a r
 `levelToMax` that wears unlevelled pieces and reports them at their real level; sub-tie options
 listed with their gain chance; the off-tier step; an off-tier level's base stats between the
 tiers; advice requests for every team of the lineup.
+
+## P5 follow-ups as built (2026-10-21)
+
+- **Level artifacts to max**: `expectedLevelledPiece` (`levelling.ts`); `levelledAccount` and
+  `withRealPieces` in `lineupSolver.ts`. The Stygian and Abyss settings rows share
+  `RunOptionToggle` (`LineupResults.tsx`), which replaced `KeepersToggle`; `CandidateDetail`
+  takes `levelled` for the "+4→20" labels.
+- **Every team**: `LevellingAdvice.tsx` renders one `TeamAdvice` per candidate, each with its
+  own request. `LevellingAdvice.damage` gives the "as is" margin.
+- **Under the tie**: `LevellingPiece.gainChance`, `beatsTie` and `LEVELLING_MIN_GAIN`.
+- **Lv 89 → 90**: `LevellingInput.accountLevels` and `LevellingStep.assumed`;
+  `offTierLevelStats` in `domain/reference/stats.ts`, the full `LEVEL_MULTIPLIERS` table in
+  `damageFormula.ts`. `ScoreUpCard` and `maxCrBuff` round to the tier.
+- **Found while measuring, fixed**: diversify compared candidates by exact pieces only. A member
+  that takes any pieces carries no exact pieces, but the MILP bounds its set's slots
+  (`setSlotCounts`). In the levelled run, the weakest-first chain kept Mizuki's team with Lan Yan
+  (any pieces, VV) as it was, wearing the account's only VV flower, which Lunar's Sucrose also
+  wore. The chain's lineup could not be fielded, and the plan gave Sucrose to the Mizuki team.
+  `findContestedGear` now also reports `setSlotKeys` (`overusedSetSlots` in `candidates.ts`), and
+  `keepClear` and the pairwise fixes re-run on them.
+- **Measured** on the Stygian export of 2026-10-21 12:01 at 30 s per team, in Node with other jobs
+  on the machine (commit hooks, a browser run), so times are high:
+
+  | Run | Lunar | Mizuki | Sandrone | Time |
+  |---|---|---|---|---|
+  | Pieces as they are, before and after the set-slot fix | ×0.528 | ×0.872 (Lan Yan) | ×0.914 | 283–557 s |
+  | Level artifacts to max, before the fix | ×0.489 (Linnea, Xiangling) | ×1.254 (Sucrose) | ×1.255 | 296–318 s |
+  | Level artifacts to max, with the fix | ×0.576 | ×1.096 (Lan Yan) | ×1.255 | 328 s |
+
+  - Alone, the levelled Lunar team reaches ×0.584 (×0.528 as is). The levelled plan is ×0.340,
+    ×0.743 and ×0.826 on the pieces as they are. Its Lunar team plans on Ineffa's +0 Gladiator CR
+    circlet and +4 Aubade goblet; the advice ranks them first (100%, +22.3% and +11.6% expected
+    from as is).
+  - Advice on the exported plan, without a re-run: the Lunar team now lists 11 slots, all under the
+    tie (best: Sucrose's +4 EM sands, a certain +1.4%). Ineffa Lv 89 → 90 is +0.7% and Columbina
+    +0.3%, already in the margins. Mizuki's +0 4★ Instructor EM circlet and goblet: 100%, +3.7%
+    each. Yae's +0 Wanderer's ATK% sands: 100%, +8.3%. 0.7–1.3 s per team.
+- **Browser** (dev server, headless Chromium; the export's account, teams and clears seeded
+  through the stores; 30 s per team with Level artifacts to max): run and advice for all three
+  teams took 301 s. Lunar ×0.57, Mizuki ×1.08, Sandrone ×1.19 (worker path, so not the Node
+  numbers). The cards showed 41 "+N→max" labels; the advice showed three teams with their as-is
+  margins, 21 muted rows and two Lv 89 → 90 steps marked as already in the margins. No
+  horizontal scroll at 375 px. English only.
+- **Open**:
+  - The levelled plan at the user's 20 min per team, in the browser.
+  - An any-pieces member's set slots are the ones it was scored with. The re-run frees them in
+    diversify, but the MILP bound stays per slot, so a member that could take its set in other
+    slots still counts against those.
+  - Margins of a levelled run are means; the advice gives each piece's spread, one at a time.
+  - Outside the advisor, Lv 89 still counts as 90 (decided with the user).

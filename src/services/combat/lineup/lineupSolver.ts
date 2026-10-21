@@ -1163,10 +1163,15 @@ async function keepClear(
   const source = state.sources.get(candidate.id);
   if (!source) return null;
   let clear: LineupCandidate | null = candidate;
-  if (
-    findContestedGear(candidate, other, state.weaponCopies).artifactIds.length >
-    0
-  ) {
+  const contested = findContestedGear(
+    candidate,
+    other,
+    state.weaponCopies,
+    state.setSlotCounts
+  );
+  // Set slots run short when a member that takes any pieces was scored with
+  // the other's pieces: the re-run leaves those for the other.
+  if (contested.artifactIds.length > 0 || contested.setSlotKeys.length > 0) {
     const excluded = candidateArtifactIds(other);
     const key = `${candidate.id}|${[...excluded].sort().join(",")}`;
     if (!state.reruns.has(key))
@@ -1181,8 +1186,8 @@ async function keepClear(
 }
 
 /**
- * Leading candidates of different encounters in a group that share pieces
- * or weapon copies but no character, most promising first.
+ * Leading candidates of different encounters in a group that share pieces,
+ * weapon copies or a set's slots but no character, most promising first.
  */
 function conflictingPairs(
   state: SolverState,
@@ -1194,10 +1199,17 @@ function conflictingPairs(
     for (const second of group.slice(index + 1))
       for (const a of leaders(state.candidates, first.id, strength))
         for (const b of leaders(state.candidates, second.id, strength)) {
-          const contested = findContestedGear(a, b, state.weaponCopies);
+          const contested = findContestedGear(
+            a,
+            b,
+            state.weaponCopies,
+            state.setSlotCounts
+          );
           if (
             contested.charIds.length === 0 &&
-            (contested.artifactIds.length > 0 || contested.weaponIds.length > 0)
+            (contested.artifactIds.length > 0 ||
+              contested.weaponIds.length > 0 ||
+              contested.setSlotKeys.length > 0)
           )
             pairs.push([a, b]);
         }

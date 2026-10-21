@@ -157,7 +157,6 @@ export function canFieldTogether(
   const charIds = new Set<string>();
   const artifactIds = new Set<string>();
   const weaponUses: Record<string, number> = {};
-  const setSlotUses: Record<string, number> = {};
   for (const candidate of candidates) {
     for (const member of candidate.members) {
       if (charIds.has(member.charId)) return false;
@@ -170,15 +169,25 @@ export function canFieldTogether(
       if (artifactIds.has(id)) return false;
       artifactIds.add(id);
     }
-    if (!setSlotCounts) continue;
-    for (const [key, count] of Object.entries(
-      candidateSetSlotUses(candidate)
-    )) {
-      setSlotUses[key] = (setSlotUses[key] ?? 0) + count;
-      if (setSlotUses[key] > (setSlotCounts[key] ?? 0)) return false;
-    }
   }
-  return true;
+  return (
+    !setSlotCounts || overusedSetSlots(candidates, setSlotCounts).length === 0
+  );
+}
+
+/** Set and slot keys the candidates together take more pieces of than are
+ *  owned. */
+export function overusedSetSlots(
+  candidates: readonly LineupCandidate[],
+  setSlotCounts: Readonly<Record<string, number>>
+): string[] {
+  const uses: Record<string, number> = {};
+  for (const candidate of candidates)
+    for (const [key, count] of Object.entries(candidateSetSlotUses(candidate)))
+      uses[key] = (uses[key] ?? 0) + count;
+  return Object.keys(uses).filter(
+    (key) => uses[key] > (setSlotCounts[key] ?? 0)
+  );
 }
 
 export interface ContestedGear {
@@ -186,13 +195,18 @@ export interface ContestedGear {
   artifactIds: string[];
   /** Weapons the two use more often than they are owned. */
   weaponIds: string[];
+  /** Set and slot keys the two take more pieces of than are owned, as when
+   *  a member that takes any pieces needs a slot the other's pieces fill;
+   *  empty without `setSlotCounts`. */
+  setSlotKeys: string[];
 }
 
 /** What keeps two candidates from being fielded together. */
 export function findContestedGear(
   candidate: LineupCandidate,
   other: LineupCandidate,
-  weaponCopies: Readonly<Record<string, number>>
+  weaponCopies: Readonly<Record<string, number>>,
+  setSlotCounts?: Readonly<Record<string, number>>
 ): ContestedGear {
   const otherCharIds = new Set(other.members.map((member) => member.charId));
   const otherArtifactIds = new Set(candidateArtifactIds(other));
@@ -210,6 +224,9 @@ export function findContestedGear(
         uses[weaponId] + (otherUses[weaponId] ?? 0) >
         (weaponCopies[weaponId] ?? 0)
     ),
+    setSlotKeys: setSlotCounts
+      ? overusedSetSlots([candidate, other], setSlotCounts)
+      : [],
   };
 }
 

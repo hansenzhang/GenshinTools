@@ -4,6 +4,7 @@ import {
   candidateSetSlotUses,
   canFieldTogether,
   fillAnyPieces,
+  findContestedGear,
 } from "@/domain/combat/lineup/candidates";
 import type { Slot } from "@/domain/enums";
 import type { ArtifactData } from "@/domain/models";
@@ -100,6 +101,17 @@ describe("members that take any pieces", () => {
     });
     expect(canFieldTogether(lineup, copies, counts(2))).toBe(true);
     expect(canFieldTogether(lineup, copies, counts(1))).toBe(false);
+    // No piece is contested, but the set's slots run short.
+    const [loose, exact] = lineup;
+    expect(findContestedGear(loose, exact, copies, counts(1))).toMatchObject({
+      artifactIds: [],
+      setSlotKeys: SLOTS.filter((slot) => slot !== "circlet").map(
+        (slot) => `${TENACITY}:${slot}`
+      ),
+    });
+    expect(
+      findContestedGear(loose, exact, copies, counts(2)).setSlotKeys
+    ).toEqual([]);
   });
 
   it("get free pieces of their set when the lineup needs theirs", () => {
