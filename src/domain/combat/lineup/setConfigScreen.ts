@@ -18,7 +18,7 @@
 
 import { TIER_LIST_SUPPORT_ARTIFACT_SETS } from "@/config/gameConstants";
 import { AVG_SUBSTAT_ROLL } from "@/domain/build/artifact/scoring/constants";
-import type { Element } from "@/domain/enums";
+import type { Element, Slot } from "@/domain/enums";
 import type { ArtifactData, ArtifactSetConfig } from "@/domain/models";
 import { artifactsById } from "@/domain/reference/catalog";
 import type {
@@ -237,15 +237,19 @@ function pieceSheet(pieces: PieceSet): StatSheet {
 }
 
 /** Sets the pieces form; unknown set keys count as no set. */
-function formedSet(pieces: PieceSet): ArtifactSetConfig | null {
+export function formedSet(
+  pieces: Partial<Record<Slot, ArtifactData | null>>
+): ArtifactSetConfig | null {
   return detectEquippedSets(
-    Object.values(pieces).filter((artifact) => !!artifactsById[artifact.setKey])
+    Object.values(pieces).filter(
+      (artifact) => !!artifact && !!artifactsById[artifact.setKey]
+    )
   );
 }
 
 /** Damage of the team with the assignment's buff defaults held, for
  *  marginals. Null when the assignment cannot be built. */
-function heldEvaluator(
+export function heldEvaluator(
   input: SetScreenInput,
   assignment: SetAssignment,
   sheets: Record<string, StatSheet>

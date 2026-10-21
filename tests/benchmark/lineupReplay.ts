@@ -9,10 +9,13 @@
  * in Node and prints the same view, so changes to the solver can be checked
  * against the user's own teams and account, run times included.
  *
+ * With `--levelling`, each lineup's weakest team also gets its levelling
+ * advice (docs/design/lineup-solver.md, P5), timed.
+ *
  * Usage:
  *   npx tsx --tsconfig tsconfig.app.json tests/benchmark/lineupReplay.ts \
  *     --file <lineup-debug.json> [--no-run] [--budget-sec 30|0] [--trace]
- *     [--dump <replayed.json>]
+ *     [--levelling] [--dump <replayed.json>]
  *
  * Node has no Worker, so the optimizer runs its inline single-thread path.
  */
@@ -31,7 +34,8 @@ import { buildLineupDebugExport } from "@/domain/combat/lineup/debugExport";
 import { setChoiceKey } from "@/domain/combat/lineup/setChoices";
 import { planStygianRun } from "@/domain/combat/lineup/stygianPlan";
 import { allSlots } from "@/domain/enums";
-import type { ArtifactSetConfig } from "@/domain/models";
+import type { ArtifactData, ArtifactSetConfig } from "@/domain/models";
+import type { CharacterStatsMap } from "@/domain/reference/stats";
 import type {
   CalibratedCandidate,
   LineupDebugExport,
@@ -43,6 +47,7 @@ import type {
 import type { Encounter } from "@/domain/team/lineupTypes";
 import type { SetAssignment } from "@/domain/team/setConfigExplorerTypes";
 import { solveMilp } from "@/services/combat/lineup/highsSolver";
+import { adviseCandidateLevelling } from "@/services/combat/lineup/levellingAdvisor";
 import { runLineupSolver } from "@/services/combat/lineup/lineupSolver";
 import { characterStatsResource, weaponStatsResource } from "./runner";
 
@@ -271,6 +276,74 @@ function chosenIds(
   return chosen;
 }
 
+/** Teams fielded together in the plan's best lineups: the whole Stygian run,
+ *  or each Abyss chamber's halves. */
+function lineups(
+  debugPlan: LineupDebugPlan,
+  calibrated: CalibratedCandidate[]
+): CalibratedCandidate[][] {
+  const find = (id: string | null | undefined) =>
+    calibrated.find((entry) => entry.id === id) ?? null;
+  const groups =
+    debugPlan.mode === "stygian"
+      ? [Object.values(debugPlan.result?.plans[0]?.candidateIds ?? {})]
+      : debugPlan.chambers.map((chamber) => [
+          chamber.pairings[0]?.firstId,
+          chamber.pairings[0]?.secondId,
+        ]);
+  return groups
+    .map((ids) => ids.map(find).filter((entry) => entry !== null))
+    .filter((group) => group.length > 0);
+}
+
+const pieceLabel = (artifact: ArtifactData) =>
+  `${artifact.setKey} +${artifact.level} ${artifact.rarity}★ ${artifact.mainStatKey} [${Object.entries(
+    artifact.substats
+  )
+    .map(([key, value]) => `${key} ${value}`)
+    .join(", ")}]`;
+
+function printLevelling(
+  request: LineupSolverRequest,
+  calibrated: CalibratedCandidate[],
+  debugPlan: LineupDebugPlan,
+  chars: CharacterStatsMap
+): void {
+  for (const lineup of lineups(debugPlan, calibrated)) {
+    const weakest = lineup.reduce((a, b) => (b.margin < a.margin ? b : a));
+    const start = performance.now();
+    const advice = adviseCandidateLevelling(
+      {
+        solver: request,
+        candidate: weakest,
+        others: lineup.filter((entry) => entry !== weakest),
+      },
+      chars
+    );
+    console.log(
+      `\n### Levelling for ${templateLabel(request, weakest.templateId)} (${weakest.id} ×${weakest.margin.toFixed(3)}) in ${seconds(performance.now() - start)}`
+    );
+    if (!advice) {
+      console.log("  the team could not be scored");
+      continue;
+    }
+    for (const piece of advice.pieces) {
+      const expected = weakest.margin * (1 + piece.expectedGain);
+      console.log(
+        `  ${piece.charId} ${piece.slot}: P ${percent(piece.beatChance)} · E +${percent(piece.expectedGain)} → ×${expected.toFixed(3)} · level ${pieceLabel(piece.artifact)} to +${piece.toLevel}`
+      );
+      if (piece.replaces && piece.replaces.id !== piece.artifact.id)
+        console.log(`      instead of ${pieceLabel(piece.replaces)}`);
+    }
+    if (advice.pieces.length === 0)
+      console.log("  no piece beats the current one");
+    for (const step of advice.steps)
+      console.log(
+        `  ${step.charId} ${step.kind} ${step.from} → ${step.to}: +${percent(step.gain)}`
+      );
+  }
+}
+
 function printRun(
   title: string,
   request: LineupSolverRequest,
@@ -330,12 +403,15 @@ async function main(): Promise<void> {
     args.trace === "true",
     new Date(exported.exportedAt)
   );
-  if (args["no-run"] === "true") return;
-
   const [chars, weapons] = await Promise.all([
     characterStatsResource.preload(),
     weaponStatsResource.preload(),
   ]);
+  const levelling = args.levelling === "true";
+  if (levelling)
+    printLevelling(exported.request, exported.calibrated, exported.plan, chars);
+  if (args["no-run"] === "true") return;
+
   // --budget-sec 0 runs every finalist until done.
   const budget = args["budget-sec"];
   const request: LineupSolverRequest = {
@@ -372,6 +448,7 @@ async function main(): Promise<void> {
     true,
     null
   );
+  if (levelling) printLevelling(request, calibrated, replayed, chars);
   if (args.dump)
     writeFileSync(
       args.dump,

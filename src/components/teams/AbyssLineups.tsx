@@ -21,6 +21,7 @@ import type {
   AbyssTimerRule,
   CalibratedCandidate,
 } from "@/domain/team/lineupSolverTypes";
+import { LevellingAdvice } from "./LevellingAdvice";
 import { LINEUP_HEADER_CLS, LINEUP_SECTION_CLS } from "./LineupEncounters";
 import {
   BindingList,
@@ -54,6 +55,7 @@ function pairingKey(pairing: AbyssPairing): string {
 }
 
 function ChamberCard({
+  job,
   plan,
   candidates,
   artifacts,
@@ -61,6 +63,7 @@ function ChamberCard({
   issuesFor,
   names,
 }: {
+  job: ReturnType<typeof useLineupJob>;
   plan: AbyssChamberPlan;
   candidates: readonly CalibratedCandidate[];
   /** The account's pieces, for members that take any pieces. */
@@ -78,13 +81,12 @@ function ChamberCard({
     candidates.find((entry) => entry.id === id) ?? null;
   const bothHalves =
     plan.bestAlone.first != null && plan.bestAlone.second != null;
+  const fielded = [
+    candidate(pairing?.firstId),
+    candidate(pairing?.secondId),
+  ].filter((entry) => entry !== null);
   // The pairing's teams with free pieces for members that take any pieces.
-  const shown = fillAnyPieces(
-    [candidate(pairing?.firstId), candidate(pairing?.secondId)].filter(
-      (entry) => entry !== null
-    ),
-    artifacts
-  );
+  const shown = fillAnyPieces(fielded, artifacts);
   const shownCandidate = (id: string | null | undefined) =>
     shown.find((entry) => entry.id === id) ?? null;
 
@@ -132,14 +134,9 @@ function ChamberCard({
         </div>
       )}
       {pairing && pairing === plan.pairings[0] && (
-        <BindingList
-          items={plan.binding}
-          lineup={[
-            candidate(pairing.firstId),
-            candidate(pairing.secondId),
-          ].filter((entry) => entry !== null)}
-        />
+        <BindingList items={plan.binding} lineup={fielded} />
       )}
+      {pairing && <LevellingAdvice job={job} lineup={fielded} names={names} />}
       {plan.pairings.length > 1 && (
         <div className="flex flex-col gap-1">
           <span
@@ -281,6 +278,7 @@ export function AbyssLineups() {
             {plans.map((plan) => (
               <ChamberCard
                 key={plan.chamber}
+                job={job}
                 plan={plan}
                 candidates={calibrated}
                 artifacts={job.artifacts}

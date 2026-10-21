@@ -5,12 +5,14 @@ import type { Slot } from "@/domain/enums";
 import type { ArtifactData } from "@/domain/models";
 import { createTeamTemplate } from "@/domain/team/lineup";
 import type {
+  LevellingRequest,
   LineupCandidate,
   LineupRunStart,
   StygianPlanRequest,
   StygianPlanResult,
 } from "@/domain/team/lineupSolverTypes";
 import type { StygianEncounter } from "@/domain/team/lineupTypes";
+import type { LevellingAdviceState } from "@/hooks/useLevellingAdvice";
 import type { LineupSolverState } from "@/hooks/useLineupSolver";
 import type { StygianPlanState } from "@/hooks/useStygianPlan";
 import { useAccountStore } from "@/stores/useAccountStore";
@@ -22,9 +24,17 @@ const mocks = vi.hoisted(() => ({
   solver: null as LineupSolverState | null,
   plan: null as StygianPlanState | null,
   planRequests: [] as (StygianPlanRequest | null)[],
+  levelling: null as LevellingAdviceState | null,
+  levellingRequests: [] as (LevellingRequest | null)[],
 }));
 vi.mock("@/hooks/useLineupSolver", () => ({
   useLineupSolver: () => mocks.solver,
+}));
+vi.mock("@/hooks/useLevellingAdvice", () => ({
+  useLevellingAdvice: (request: LevellingRequest | null) => {
+    mocks.levellingRequests.push(request);
+    return mocks.levelling ?? { advice: null, error: null, isComputing: false };
+  },
 }));
 vi.mock("@/hooks/useStygianPlan", () => ({
   useStygianPlan: (request: StygianPlanRequest | null) => {
@@ -164,7 +174,34 @@ beforeEach(() => {
   };
   mocks.plan = { result: null, error: null, isSolving: true };
   mocks.planRequests = [];
+  mocks.levelling = null;
+  mocks.levellingRequests = [];
   useAccountStore.setState({ activeAccountId: null, accounts: {} });
+});
+
+function useTestAccount() {
+  useAccountStore.setState({
+    activeAccountId: 1,
+    accounts: {
+      1: {
+        id: 1,
+        name: "Test",
+        data: { characters: [], extraArtifacts: [], extraWeapons: [] },
+        lastUpdate: 0,
+      },
+    },
+  });
+}
+
+const sands = (id: string, level: number): ArtifactData => ({
+  id,
+  setKey: "crimson_witch_of_flames",
+  slotKey: "sands",
+  level,
+  rarity: 5,
+  mainStatKey: "atk%",
+  lock: false,
+  substats: { cr: 3.5 },
 });
 
 describe("StygianLineup", () => {
@@ -218,6 +255,89 @@ describe("StygianLineup", () => {
     );
     expect(screen.getByText("Needs +36% damage")).toBeInTheDocument();
     expect(screen.queryByText("Hardest to lose")).not.toBeInTheDocument();
+  });
+
+  it("advises what to level for the weakest boss's team", () => {
+    seed();
+    useTestAccount();
+    mocks.plan = {
+      result: {
+        plans: [
+          {
+            kind: "leximin",
+            candidateIds: { b1: "c1", b2: "c2", b3: "c3" },
+            weakest: 0.88,
+          },
+        ],
+        missingEncounterIds: [],
+        binding: [],
+      },
+      error: null,
+      isSolving: false,
+    };
+    mocks.levelling = {
+      advice: {
+        candidateId: "c2",
+        pieces: [
+          {
+            charId: "diluc",
+            slot: "sands",
+            artifact: sands("fresh", 0),
+            replaces: sands("worn", 20),
+            toLevel: 20,
+            beatChance: 0.87,
+            expectedGain: 0.062,
+          },
+        ],
+        steps: [
+          { charId: "diluc", kind: "skill", from: 9, to: 10, gain: 0.034 },
+          { charId: "diluc", kind: "level", from: 90, to: 95, gain: 0.01 },
+        ],
+      },
+      error: null,
+      isComputing: false,
+    };
+    render(<StygianLineup />);
+    const request = mocks.levellingRequests.at(-1);
+    expect(request?.candidate.id).toBe("c2");
+    expect(request?.others.map((entry) => entry.id).sort()).toEqual([
+      "c1",
+      "c3",
+    ]);
+    expect(screen.getByText("Worth levelling")).toBeInTheDocument();
+    expect(screen.getByText("+0 → +20")).toBeInTheDocument();
+    expect(screen.getByText("instead of")).toBeInTheDocument();
+    expect(screen.getByText("87% chance")).toBeInTheDocument();
+    expect(screen.getByText("+6.2% expected")).toBeInTheDocument();
+    // 0.88 · 1.062
+    expect(screen.getByText("×0.93")).toBeInTheDocument();
+    expect(screen.getByText("Talents and levels")).toBeInTheDocument();
+    expect(screen.getByText(/Skill 9 → 10/)).toBeInTheDocument();
+    expect(screen.getByText(/Lv90 → Lv95/)).toBeInTheDocument();
+  });
+
+  it("waits for the run to finish before advising", () => {
+    seed();
+    useTestAccount();
+    mocks.solver = { ...mocks.solver!, isComputing: true };
+    mocks.plan = {
+      result: {
+        plans: [
+          {
+            kind: "leximin",
+            candidateIds: { b1: "c1", b2: "c2", b3: "c3" },
+            weakest: 0.88,
+          },
+        ],
+        missingEncounterIds: [],
+        binding: [],
+      },
+      error: null,
+      isSolving: false,
+    };
+    render(<StygianLineup />);
+    expect(mocks.levellingRequests.every((entry) => entry === null)).toBe(true);
+    expect(screen.queryByText("Worth levelling")).not.toBeInTheDocument();
   });
 
   it("shows where an optimization on owned artifacts is", () => {

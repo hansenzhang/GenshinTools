@@ -302,6 +302,11 @@ export function useLineupJob(
     encounters,
     calibrations,
     solver,
+    /** The run's inputs; null without an account. */
+    request,
+    /** The inputs that change candidates: clear times and bars are left
+     *  out, unless a clear weights its encounter's RES phases. */
+    signature,
     calibrated,
     /** The account's pieces, for filling members that take any pieces. */
     artifacts,

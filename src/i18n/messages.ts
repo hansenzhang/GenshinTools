@@ -2432,6 +2432,39 @@ export const i18nUiData = {
       en: "No lineup fields every boss without sharing a character, artifact or weapon.",
       zh: "没有能让每位首领都不共用角色、圣遗物或武器的阵容。",
     },
+    worthLevelling: { en: "Worth levelling", zh: "值得强化" },
+    worthLevellingTip: {
+      en: "For the weakest team: per slot, the piece most likely to raise its damage by more than {0}% once levelled to max. Chances follow the game's roll odds, one piece at a time.",
+      zh: "针对最弱的队伍：每个部位强化满级后最有可能使伤害提升超过 {0}% 的圣遗物。概率按游戏的副词条强化规则计算，每次只考虑更换一件。",
+    },
+    levellingRunning: {
+      en: "Working out what to level…",
+      zh: "正在计算强化建议…",
+    },
+    levellingFailed: {
+      en: "Levelling advice could not be worked out for this team.",
+      zh: "无法为该队伍计算强化建议。",
+    },
+    noLevelling: {
+      en: "No piece is likely to raise its damage by more than {0}%.",
+      zh: "没有圣遗物有望使伤害提升超过 {0}%。",
+    },
+    insteadOf: { en: "instead of", zh: "替换" },
+    beatChance: { en: "{0}% chance", zh: "{0}% 概率" },
+    beatChanceTip: {
+      en: "Chance it raises the team's damage by more than {0}%",
+      zh: "使队伍伤害提升超过 {0}% 的概率",
+    },
+    expectedGain: { en: "+{0}% expected", zh: "预期 +{0}%" },
+    expectedGainTip: {
+      en: "Average gain, counting a result worse than the current piece as no change",
+      zh: "平均提升；不如当前圣遗物的结果计为无变化",
+    },
+    talentsAndLevels: { en: "Talents and levels", zh: "天赋与等级" },
+    talentsAndLevelsTip: {
+      en: "One level up each, for the same team. Gains under {0}% are within model error.",
+      zh: "每项各升一级，针对同一队伍。低于 {0}% 的提升在模型误差范围内。",
+    },
   },
   filters: {
     title: { en: "Filters", zh: "过滤" },

@@ -2,7 +2,8 @@
 
 Status: decisions and design, 2026-10-16. P1 is implemented as Build comparison › Team sets,
 P0 as Team Comp › Lineups (2026-10-18), P2 as Lineups › Abyss lineups and P3 as Lineups ›
-Stygian lineup (2026-10-19), with the fixes in "P3 fixes". P4–P6 are not.
+Stygian lineup (2026-10-19), with the fixes in "P3 fixes". P5 is implemented as Lineups ›
+Worth levelling (2026-10-21, "P5 levelling advisor"). P4 and P6 are not.
 Source: the feasibility study in `~/mistilteinn/reference/notes/team-solver-study.md`, which
 compares this repo with Genshin Optimizer (GO) and gcsim, and the decisions made with the user
 after it.
@@ -589,3 +590,118 @@ fixture through hydration; a boss's phases reused by a new encounter.
   above predict, phases move absolute damage more than the ratios that margins use.
 - **Open**: the Overseer's spin length is a guess until the user enters it; phases in the
   browser need the user's own run.
+
+## P5 levelling advisor (design, 2026-10-21)
+
+The question: which unlevelled pieces should be levelled for the lineup's weakest team, and do
+its talents or character levels matter as much. P4 has not run; P5 ships on its own either way.
+
+- **Which team**: the weakest boss of the Stygian plan shown, and in each Abyss chamber the
+  weaker half of the pairing shown. Gains are relative to that team's damage, rebuilt from the
+  run's inputs, and a margin moves with damage (`margin ∝ r`). Raising the weakest team lifts
+  the lineup's floor only up to the next-weakest team's margin. The advisor does not cap at
+  that margin; the plan already shows it.
+- **Options**:
+  - Pieces: for each member whose pieces matter (not any pieces) and each slot, every owned 4★
+    or 5★ piece of that slot below max level. Pieces another team of the lineup needs, or another
+    member of this team wears, are left out. A swap must keep the sets the member's pieces form;
+    any main stat may replace another. The worn piece, if unlevelled, is one of the options. Kept
+    artifacts only does not apply: deciding what to level is how a piece becomes worth keeping.
+  - Steps: each member's Normal Attack, Skill and Burst one level up (base level below 10), and
+    the character's next level tier (70 → 80 → 90 → 95 → 100), as in Analysis.
+- **Roll odds** (Mistilteinn's `upgradeDistribution`, ported to damage units): a 5★ piece has
+  5 upgrades and a 4★ piece 4, one per +4 level. Below four lines an upgrade adds a line, drawn
+  by weight (flat HP/ATK/DEF 6, HP/ATK/DEF%, ER and EM 4, CR and CD 3) from the stats that are
+  neither the main stat nor an existing line. The line is known when the game has shown it
+  (GOOD's `unactivatedSubstats`). With four lines each upgrade raises one line, uniformly.
+  Every roll is one of the four tier values, uniformly. The main stat goes to its max-level
+  value.
+- **Damage**: the fixed part is scored exactly: the piece at max level with its current lines,
+  the known line activated, and the sets re-formed. Rolls go through the member's marginal
+  damage per stat at that point (`memberStatWeights`), the delta method of GO's `upopt`. The
+  gradient is taken there, not at the current build, because a main stat moves it (a CR circlet
+  makes a CD roll worth more and a CR roll worth less). The distribution of the sum is exact,
+  binned at 0.01% of team damage.
+- **Value and rank**: a piece **beats the current one** when the team's damage rises by more
+  than the margin tie, 3%. Below that, the gain is within model error. The advisor reports:
+  - P(beats);
+  - E[max(0, gain)], the expected gain if a worse result is not worn. This is
+    `E[max(0, gain − bar)]` with the plan as built as the bar; one swap at a time, the rest of
+    the lineup held.
+
+  Each slot lists its best option, ranked by P(beats), then by expected gain (P within one
+  point counts as tied). Levelling one piece raises the bar for the others in its slot: level
+  it, then run again. Options with no chance to beat the current piece are left out. Steps are
+  certain, so they are listed by gain, with those under the tie marked.
+- **Screen**: exact scoring takes about 20 evaluations per option, so options are first ranked by
+  the gradient at the current build: the fixed part's linear change plus the expected rolls per
+  stat (Mistilteinn's `expectedRollsByStat`). The top 6 per member and slot, and the worn piece,
+  are scored exactly.
+- **Where**:
+  - Roll odds and option math go in `domain/combat/lineup/levelling.ts`.
+  - Rebuilding the candidate's scoring input from the run's request goes in
+    `services/combat/lineup/levellingAdvisor.ts`. The solver's context helpers are reused.
+  - `levellingAdvisor.worker.ts` runs it; `hooks/useLevellingAdvice.ts` asks it.
+  - The cards are in `components/teams/LevellingAdvice.tsx`, under Hardest to lose.
+  - Nothing is saved. Advice follows the shown plan and is recomputed when that plan's team or
+    lineup changes. Clear times only change the margins shown.
+- **Limits**:
+  - One swap at a time: X freeing the worn piece for another team is not valued, and the
+    lineup is not re-solved per outcome.
+  - The gradient is linear within one piece's rolls; CR past 100% and ER requirements are not
+    re-checked per outcome.
+  - A swap that would change the member's sets is not considered.
+
+Tests: roll odds against brute-force enumeration (sums to 1; four lines match a binomial; a
+known line); exact P and E against enumeration for a small linear case; sets kept; pieces of
+other teams left out; a +0 worn piece with the right main stat recommended; steps.
+
+## P5 as built (2026-10-21)
+
+- **Domain** (`domain/combat/lineup/levelling.ts`): `pendingRolls`, `levelledPiece`,
+  `rollGainDistribution`, `expectedRollsByStat`, `summarizeOutcome` and `adviseLevelling`.
+  Constants: `LEVELLING_GAIN_BIN`, `LEVELLING_SCREENED_PER_SLOT` (6) and `LEVELLING_CHANCE_STEP`
+  (1 point). `setConfigScreen.ts` now exports `formedSet` and `heldEvaluator`. A swap that leaves
+  a member short of its ER or CR requirement at the fixed point is dropped.
+- **Service** (`services/combat/lineup/levellingAdvisor.ts`, `levellingAdvisor.worker.ts`):
+  `candidateScreen` rebuilds the scoring input with the solver's own `taskScoring` and
+  `fieldScoredComposition`, now shared by `generateTaskCandidates`. A test checks that it
+  reproduces every candidate's damage to 1e-9.
+- **UI** (`components/teams/LevellingAdvice.tsx`): under Hardest to lose in the Stygian plan
+  card and in each Abyss chamber card, for the weaker team of what is shown.
+  - Each row shows the member, the piece and its levels, the piece it replaces, the chance,
+    the expected gain and the margin it would reach.
+  - Talents and levels follow; steps under 3% are muted.
+  - The request is keyed by the run's signature and candidate ids, so editing a clear or bar
+    keeps the advice. Nothing runs while the solver does.
+- **Replay**: `tests/benchmark/lineupReplay.ts --levelling` prints the advice for each lineup's
+  weakest team, timed.
+- **Measured** on the Stygian export of 2026-10-21 06:57 (debug v2, 600 s per team), with
+  `--no-run`. Node, single thread. That export predates the scoring-objective fix, so the
+  advisor rescores the teams on the current objective.
+
+  | Team (plan margin) | Time | Best options |
+  |---|---|---|
+  | Lunar, Sucrose (×0.500, weakest) | 1.0 s | Ineffa goblet +13 Aubade: 25%, +2.5%; Ineffa circlet +0 Gladiator's CR: 9%, +1.7%; Columbina flower +4: 1%. Ineffa Lv 90 → 95 +3.5% |
+  | Sandrone (×0.793) | 0.3 s | a +0 Shimenawa ATK% sands in place of the worn +4: 100%, +4.9%; a +4 goblet: 95%, +4.1%; the worn +4 plume: 89%, +3.7% |
+  | Mizuki (×2.21) | 0.5 s | a +4 EM sands and goblet in place of the +20 ATK% ones: 100%, +9.5% and +7.4% |
+
+  The Lunar team's carries are at +20, so levelling cannot close its gap. Its weakest boss
+  needs ~+100%, and the best certain step is Ineffa's next level tier. Sucrose's pieces are
+  worth 2.6% of team damage. Levelling her +4 EM sands adds a certain 1.9%, under the tie,
+  so none of her pieces is listed.
+- **Browser** (dev server, headless Chromium):
+  - Account: two teams on a small test account.
+  - A Stygian run plus advice took 40–53 s.
+  - The weaker team (×0.95) was told to level its unlevelled Gladiator's pieces: 100% each,
+    +12% expected, reaching ×1.07.
+  - Checked at 1440 px and 375 px (no horizontal scroll), in English (Nodkrai theme) and
+    Chinese (Mondstadt theme).
+  - The Abyss card shares the component; it is covered by a component test, not checked in
+    the browser.
+- **Open**:
+  - The advice on the user's own run in the browser.
+  - Advice for a team other than the weakest.
+  - Weapon levels.
+  - The next-weakest team's margin as a cap on the floor gain.
+  - P4 still decides whether the multi-team work continues; P5 stands either way.

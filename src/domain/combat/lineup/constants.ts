@@ -88,6 +88,18 @@ export const LINEUP_TIME_BUDGET_OPTIONS_SEC = [
 
 export const LINEUP_DEFAULT_TIME_BUDGET_SEC = 120;
 
+// Levelling advisor (docs/design/lineup-solver.md, P5).
+
+/** Bin width of a levelling outcome's gain, as a share of team damage. */
+export const LEVELLING_GAIN_BIN = 1e-4;
+
+/** Pieces per member and slot scored exactly, besides the one worn. */
+export const LEVELLING_SCREENED_PER_SLOT = 6;
+
+/** Chances of beating the current piece are compared to this step, so
+ *  closer ones tie and expected gain decides. */
+export const LEVELLING_CHANCE_STEP = 0.01;
+
 /** Format tag and version of a lineup run's debug export. */
 export const LINEUP_DEBUG_FORMAT = "genshintools-lineup-debug";
 export const LINEUP_DEBUG_VERSION = 3;

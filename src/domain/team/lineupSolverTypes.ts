@@ -160,6 +160,58 @@ export type StygianPlanMessage =
   | { type: "result"; id: number; result: StygianPlanResult }
   | { type: "error"; id: number; details: string };
 
+// ─── Levelling advice ───
+
+/** Levelling one piece to max level and wearing it in a member's slot. */
+export interface LevellingPiece {
+  charId: string;
+  slot: Slot;
+  /** The piece to level, as it is now. */
+  artifact: ArtifactData;
+  /** The piece the member wears in that slot now; the same piece when it
+   *  is the one to level. */
+  replaces: ArtifactData | null;
+  toLevel: number;
+  /** Chance the team's damage rises by more than the margin tie. */
+  beatChance: number;
+  /** E[max(0, gain)]: the expected relative damage gain when a result
+   *  worse than the current piece is not worn. */
+  expectedGain: number;
+}
+
+export type LevellingStepKind = "level" | "auto" | "skill" | "burst";
+
+/** One character level tier or one talent level up; certain. */
+export interface LevellingStep {
+  charId: string;
+  kind: LevellingStepKind;
+  from: number;
+  to: number;
+  /** Relative damage gain. */
+  gain: number;
+}
+
+export interface LevellingAdvice {
+  candidateId: string;
+  /** Best option per member and slot, most likely to beat the current piece
+   *  first. */
+  pieces: LevellingPiece[];
+  /** Steps that raise damage, largest gain first. */
+  steps: LevellingStep[];
+}
+
+export interface LevellingRequest {
+  /** The run the candidate came from: account, teams, encounters, clears. */
+  solver: LineupSolverRequest;
+  candidate: LineupCandidate;
+  /** The lineup's other teams; their exact pieces stay where they are. */
+  others: LineupCandidate[];
+}
+
+export type LevellingMessage =
+  | { type: "result"; id: number; advice: LevellingAdvice | null }
+  | { type: "error"; id: number; details: string };
+
 // ─── Solver job ───
 
 export interface LineupSolverTeam {

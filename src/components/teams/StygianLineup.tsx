@@ -10,6 +10,7 @@ import type {
   StygianPlanRequest,
 } from "@/domain/team/lineupSolverTypes";
 import { useStygianPlan } from "@/hooks/useStygianPlan";
+import { LevellingAdvice } from "./LevellingAdvice";
 import {
   LINEUP_HEADER_CLS,
   LINEUP_SECTION_CLS,
@@ -63,14 +64,12 @@ export function StygianLineup() {
   const plan = plans.find((entry) => entry.kind === selectedKind) ?? plans[0];
   const candidate = (id: string | undefined) =>
     calibrated.find((entry) => entry.id === id) ?? null;
+  const chosen = encounters.flatMap((encounter) => {
+    const entry = candidate(plan?.candidateIds[encounter.id]);
+    return entry ? [entry] : [];
+  });
   // The plan's teams with free pieces for members that take any pieces.
-  const shown = fillAnyPieces(
-    encounters.flatMap((encounter) => {
-      const chosen = candidate(plan?.candidateIds[encounter.id]);
-      return chosen ? [chosen] : [];
-    }),
-    job.artifacts
-  );
+  const shown = fillAnyPieces(chosen, job.artifacts);
   const bestAlone = (encounterId: string) => {
     const margins = calibrated.flatMap((entry) =>
       entry.encounterId === encounterId ? [entry.margin] : []
@@ -178,13 +177,10 @@ export function StygianLineup() {
               </div>
             )}
             {plan?.kind === "leximin" && planState.result && (
-              <BindingList
-                items={planState.result.binding}
-                lineup={Object.values(plan.candidateIds).flatMap((id) => {
-                  const chosen = candidate(id);
-                  return chosen ? [chosen] : [];
-                })}
-              />
+              <BindingList items={planState.result.binding} lineup={chosen} />
+            )}
+            {plan && !noLineup && (
+              <LevellingAdvice job={job} lineup={chosen} names={names} />
             )}
             {plans.length > 1 && (
               <div className="flex flex-col gap-1">

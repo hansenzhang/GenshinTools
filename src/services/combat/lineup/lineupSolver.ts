@@ -64,7 +64,7 @@ import {
   type SetScreenInput,
 } from "@/domain/combat/lineup/setConfigScreen";
 import { allSlots, type Slot, type StatKey } from "@/domain/enums";
-import type { ArtifactData } from "@/domain/models";
+import type { AccountData, ArtifactData } from "@/domain/models";
 import { artifactsById } from "@/domain/reference/catalog";
 import type {
   CharacterStatsMap,
@@ -96,6 +96,7 @@ import type {
   Calibration,
   Encounter,
   ReferenceBuild,
+  TemplateComposition,
 } from "@/domain/team/lineupTypes";
 import type {
   SetAccountOutcome,
@@ -120,10 +121,20 @@ type ProgressMessage = Extract<LineupSolverMessage, { type: "progress" }>;
 type ArtifactsByChar = Record<string, Record<Slot, ArtifactData | null>>;
 
 /** One template against one encounter it has a recorded clear for. */
-interface Task {
+export interface Task {
   team: LineupSolverTeam;
   encounter: Encounter;
   calibration: Calibration;
+}
+
+/** How every composition of a task is scored. */
+export interface TaskScoring {
+  contexts: { optimize: CalcContext; display: CalcContext };
+  /** The team's rotation. */
+  objective: ComboFormula;
+  userBuffOverrides: ReturnType<typeof extractComboOverrides>;
+  /** The team's own members, whose lines joining members replace. */
+  teamCharIds: string[];
 }
 
 /** What a candidate was optimized from, for re-runs. */
@@ -253,6 +264,56 @@ function tryTeamBuild(
   } catch {
     return null;
   }
+}
+
+/** The task's enemy contexts and the team's rotation; null when the team
+ *  has no rotation to score. */
+export function taskScoring(
+  task: Task,
+  accountData: AccountData,
+  comboOverrides: LineupSolverRequest["comboOverrides"]
+): TaskScoring | null {
+  const { teamComp, setupConfig } = task.team;
+  const contexts = encounterContexts(
+    setupConfig,
+    task.encounter,
+    task.calibration.measuredSeconds
+  );
+  const teamConfigs = buildTeamSlotConfigs(teamComp, setupConfig, accountData);
+  const teamBuild = tryTeamBuild(teamConfigs, setupConfig, contexts.display);
+  if (!teamBuild) return null;
+  const objective = resolveTeamObjective(setupConfig.damage, teamBuild);
+  if (objective.lines.length === 0) return null;
+  return {
+    contexts,
+    objective,
+    userBuffOverrides: extractComboOverrides(comboOverrides, objective.id),
+    teamCharIds: teamConfigs.map((config) => config.charId),
+  };
+}
+
+/** A composition fielded from the account with its share of the rotation;
+ *  null when it cannot be fielded or scored. */
+export function fieldScoredComposition(
+  task: Task,
+  scoring: TaskScoring,
+  composition: TemplateComposition,
+  accountData: AccountData
+): { fielded: TeamComp; combo: ComboFormula } | null {
+  const { template, teamComp, setupConfig } = task.team;
+  const fielded = fieldComposition(
+    template,
+    teamComp,
+    composition,
+    accountData
+  );
+  if (!fielded) return null;
+  const configs = buildTeamSlotConfigs(fielded, setupConfig, accountData);
+  if (configs.length !== composition.length) return null;
+  const team = tryTeamBuild(configs, setupConfig, scoring.contexts.display);
+  const combo =
+    team && compositionObjective(scoring.objective, team, scoring.teamCharIds);
+  return combo ? { fielded, combo } : null;
 }
 
 /** Sets the recorded build's pieces form; unknown set keys count as none. */
@@ -663,21 +724,9 @@ async function generateTaskCandidates(
   const { request, chars } = state;
   const account = request.accountData;
   const { template, teamComp, setupConfig } = task.team;
-  const contexts = encounterContexts(
-    setupConfig,
-    task.encounter,
-    task.calibration.measuredSeconds
-  );
-  const teamConfigs = buildTeamSlotConfigs(teamComp, setupConfig, account);
-  const teamBuild = tryTeamBuild(teamConfigs, setupConfig, contexts.display);
-  if (!teamBuild) return "no-objective";
-  const objective = resolveTeamObjective(setupConfig.damage, teamBuild);
-  if (objective.lines.length === 0) return "no-objective";
-  const userBuffOverrides = extractComboOverrides(
-    request.comboOverrides,
-    objective.id
-  );
-  const teamCharIds = teamConfigs.map((config) => config.charId);
+  const scoring = taskScoring(task, account, request.comboOverrides);
+  if (!scoring) return "no-objective";
+  const { contexts, objective, userBuffOverrides, teamCharIds } = scoring;
   const { reference } = task.calibration;
   const referenceDamage = scoreReference(
     reference,
@@ -744,13 +793,8 @@ async function generateTaskCandidates(
     teamComp,
     traits
   ).slice(0, LINEUP_RANKED_COMPOSITIONS)) {
-    const fielded = fieldComposition(template, teamComp, composition, account);
-    if (!fielded) continue;
-    const configs = buildTeamSlotConfigs(fielded, setupConfig, account);
-    if (configs.length !== composition.length) continue;
-    const team = tryTeamBuild(configs, setupConfig, contexts.display);
-    const combo = team && compositionObjective(objective, team, teamCharIds);
-    const job = combo && prepare(fielded, combo, []);
+    const scored = fieldScoredComposition(task, scoring, composition, account);
+    const job = scored && prepare(scored.fielded, scored.combo, []);
     if (job) jobs.push(job);
   }
   if (jobs.length === 0) return "no-composition";

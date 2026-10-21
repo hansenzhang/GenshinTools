@@ -4,6 +4,7 @@ import type { Slot } from "@/domain/enums";
 import type { ArtifactData } from "@/domain/models";
 import { createAbyssEncounter, createTeamTemplate } from "@/domain/team/lineup";
 import type {
+  LevellingRequest,
   LineupCandidate,
   LineupSolverResult,
 } from "@/domain/team/lineupSolverTypes";
@@ -16,6 +17,15 @@ import { act, render, screen } from "../../utils/render";
 const solver = vi.hoisted(() => ({
   state: null as LineupSolverState | null,
   signatures: [] as string[],
+}));
+const levelling = vi.hoisted(() => ({
+  requests: [] as (LevellingRequest | null)[],
+}));
+vi.mock("@/hooks/useLevellingAdvice", () => ({
+  useLevellingAdvice: (request: LevellingRequest | null) => {
+    levelling.requests.push(request);
+    return { advice: null, error: null, isComputing: true };
+  },
 }));
 vi.mock("@/hooks/useLineupSolver", () => ({
   useLineupSolver: (_mode: string, signature: string) => {
@@ -125,6 +135,7 @@ beforeEach(() => {
   useAccountStore.setState({ activeAccountId: null, accounts: {} });
   solver.state = solverState(null);
   solver.signatures = [];
+  levelling.requests = [];
 });
 
 describe("AbyssLineups", () => {
@@ -183,6 +194,51 @@ describe("AbyssLineups", () => {
     expect(solver.signatures.at(-1)).toBe(signature);
     // 0.9 · 110 / 110
     expect(screen.getAllByText("×0.90").length).toBeGreaterThan(0);
+  });
+
+  it("advises levelling for the weaker half, kept while a clear is edited", () => {
+    seed();
+    useAccountStore.setState({
+      activeAccountId: 1,
+      accounts: {
+        1: {
+          id: 1,
+          name: "Test",
+          data: { characters: [], extraArtifacts: [], extraWeapons: [] },
+          lastUpdate: 0,
+        },
+      },
+    });
+    solver.state = solverState({
+      candidates: [
+        candidate("c2", "tb", "e2", ["diluc", "bennett"], 0.9),
+        candidate("c3", "ta", "e1", ["hu_tao", "yelan"], 1.1),
+      ],
+      issues: [],
+      weaponCopies: {
+        favonius_sword: 1,
+        hu_tao_weapon: 1,
+        yelan_weapon: 1,
+        diluc_weapon: 1,
+      },
+      setSlotCounts: {},
+      trace: { tasks: [], runs: [], inFlight: null, memberStats: {} },
+      partial: false,
+    });
+    const view = render(<AbyssLineups />);
+    expect(screen.getByText("Worth levelling")).toBeInTheDocument();
+    expect(screen.getByText("Working out what to level…")).toBeInTheDocument();
+    const request = levelling.requests.at(-1);
+    expect(request?.candidate.id).toBe("c2");
+    expect(request?.others.map((entry) => entry.id)).toEqual(["c3"]);
+
+    act(() =>
+      useLineupStore.getState().updateCalibration("c-tb", {
+        measuredSeconds: 120,
+      })
+    );
+    view.rerender(<AbyssLineups />);
+    expect(levelling.requests.at(-1)).toBe(request);
   });
 
   it("explains a half whose team found nothing", () => {
