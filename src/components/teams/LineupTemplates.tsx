@@ -615,6 +615,11 @@ function TemplateCard({
         />
         {deleteButton}
       </div>
+      {!setupConfig.damage?.combo && (
+        <p className="text-xs text-muted-foreground">
+          {t.ui("lineup.noSavedRotation")}
+        </p>
+      )}
       <FlexSlots template={template} team={team} />
       <CompositionRules
         template={template}

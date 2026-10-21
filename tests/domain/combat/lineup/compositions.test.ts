@@ -152,7 +152,7 @@ describe("compositionObjective", () => {
       ["hu_tao", "staff_of_homa"],
       ["xiangling", "the_catch"],
     ]);
-    const objective = compositionObjective(rotation, false, swapped, [
+    const objective = compositionObjective(rotation, swapped, [
       "hu_tao",
       "xingqiu",
     ]);
@@ -164,28 +164,29 @@ describe("compositionObjective", () => {
     expect(objective?.lines.some((l) => l.charId === "xiangling")).toBe(true);
   });
 
-  it("drops a single formula whose character left", () => {
-    const single = resolveTeamObjective(
+  it("scores a team's rotation, not its selected formula", () => {
+    const xingqiuLine = rotation.lines.find((l) => l.charId === "xingqiu")!;
+    const defaults = resolveTeamObjective(undefined, original);
+    expect(defaults.lines).toEqual(rotation.lines);
+    const selected = resolveTeamObjective(
       {
         formulaMode: "single",
         selectedFormula: {
           charId: "xingqiu",
-          formulaId: rotation.lines.find((l) => l.charId === "xingqiu")!
-            .formulaId,
+          formulaId: xingqiuLine.formulaId,
         },
       },
       original
     );
-    expect(single.lines).toHaveLength(1);
-    const without = build([
-      ["hu_tao", "staff_of_homa"],
-      ["xiangling", "the_catch"],
-    ]);
+    expect(selected.lines).toEqual(rotation.lines);
+    const saved: ComboFormula = {
+      id: "saved",
+      label: rotation.label,
+      lines: [xingqiuLine],
+    };
     expect(
-      compositionObjective(single, true, without, ["hu_tao", "xingqiu"])
-    ).toBeNull();
-    expect(
-      compositionObjective(single, true, original, ["hu_tao", "xingqiu"])?.lines
-    ).toEqual(single.lines);
+      resolveTeamObjective({ formulaMode: "single", combo: saved }, original)
+        .lines
+    ).toEqual([xingqiuLine]);
   });
 });

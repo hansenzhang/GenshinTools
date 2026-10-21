@@ -12,15 +12,10 @@ import type {
 import {
   detectEquippedSets,
   getEffectiveCombo,
-  resolveSelectedFormula,
 } from "@/domain/team/teamConfigUtils";
 import type { TeamComp, TeamDamageConfig } from "@/domain/team/types";
 import { collectOwnedWeaponCopies } from "@/domain/team/weaponCopies";
-import {
-  collectAllFormulas,
-  joiningMemberLines,
-  resolveActiveCombo,
-} from "../damage/core/combo";
+import { joiningMemberLines, resolveActiveCombo } from "../damage/core/combo";
 import type { TeamBuild } from "../damage/core/teamBuild";
 import type { ComboFormula } from "../damage/types";
 
@@ -81,19 +76,19 @@ export function fieldComposition(
   return { ...team, slots: nextSlots };
 }
 
-/** The rotation a team is scored on, resolved as the Analysis workspace does. */
+/**
+ * The rotation a team is scored on: its saved rotation, or the default one
+ * the Analysis workspace builds. Never a single formula, even when the team
+ * has one selected: a margin compares whole-team clear times, so every
+ * member's damage counts.
+ */
 export function resolveTeamObjective(
   damage: TeamDamageConfig | undefined,
   team: TeamBuild
 ): ComboFormula {
   const charIds = team.configs.map((config) => config.charId);
-  const formulas = team.catalog.getFormulaIds();
   return getEffectiveCombo({
-    ...damage,
-    selectedFormula: resolveSelectedFormula(
-      damage?.selectedFormula,
-      collectAllFormulas(Object.keys(formulas), formulas)
-    ),
+    formulaMode: "combo",
     combo:
       damage?.combo ?? resolveActiveCombo([], undefined, team, charIds, true),
   });
@@ -101,12 +96,10 @@ export function resolveTeamObjective(
 
 /**
  * The team's objective for other members: lines of members who stay, plus
- * default lines for members who join. A single-formula objective carries over
- * only while its character stays. Null when no line is left.
+ * default lines for members who join. Null when no line is left.
  */
 export function compositionObjective(
   objective: ComboFormula,
-  singleFormula: boolean,
   team: TeamBuild,
   originalCharIds: readonly string[]
 ): ComboFormula | null {
@@ -121,13 +114,9 @@ export function compositionObjective(
   const removedLines = objective.lines.filter(
     (line) => !members.has(line.charId)
   );
-  const joined = singleFormula
-    ? []
-    : team.configs
-        .filter((config) => !original.has(config.charId))
-        .flatMap((config) =>
-          joiningMemberLines(team, config.charId, removedLines)
-        );
+  const joined = team.configs
+    .filter((config) => !original.has(config.charId))
+    .flatMap((config) => joiningMemberLines(team, config.charId, removedLines));
   const lines = [...kept, ...joined];
   return lines.length > 0
     ? { ...objective, lines, buffOverrides: undefined }

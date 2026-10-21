@@ -6,6 +6,7 @@ import {
   candidateArtifactIds,
   canFieldTogether,
 } from "@/domain/combat/lineup/candidates";
+import { assignmentKey } from "@/domain/combat/lineup/setChoices";
 import { planStygianRun } from "@/domain/combat/lineup/stygianPlan";
 import type { MainStat, Slot, SubStat } from "@/domain/enums";
 import type { AccountData, ArtifactData, CharacterData } from "@/domain/models";
@@ -31,6 +32,7 @@ import type {
   Encounter,
   StygianEncounter,
 } from "@/domain/team/lineupTypes";
+import type { SetAssignment } from "@/domain/team/setConfigExplorerTypes";
 import { teamCompInputToComp } from "@/domain/team/teamDeltas";
 import type { TeamComp, TeamSetupConfig } from "@/domain/team/types";
 import { solveMilp } from "@/services/combat/lineup/highsSolver";
@@ -335,6 +337,34 @@ describe("runLineupSolver", () => {
     for (const candidate of result.candidates)
       for (const id of candidateArtifactIds(candidate))
         expect(recorded.has(id)).toBe(true);
+  }, 120_000);
+
+  it("runs each composition even when its sets mirror another's", async () => {
+    // Diluc takes Hu Tao's slot, so the compositions screen the same sets
+    // slot for slot. The budget covers every composition's top three.
+    const flex: LineupSolverTeam = {
+      ...teamA,
+      template: { ...teamA.template, flexBySlot: [["diluc"], [], [], []] },
+    };
+    const result = finalResult(
+      await run(
+        request({
+          teams: [flex],
+          calibrations: [calibrate(flex, "first")],
+          timeBudgetSec: 5,
+        })
+      )
+    );
+    const runKey = (charIds: string[], assignment: SetAssignment) =>
+      `${charIds.join(",")}:${assignmentKey(assignment, charIds)}`;
+    const ran = new Set(
+      result.trace.runs.map((entry) => runKey(entry.charIds, entry.assignment))
+    );
+    const screens = result.trace.tasks[0].screens;
+    expect(screens).toHaveLength(2);
+    for (const screen of screens)
+      for (const outcome of screen.outcomes.slice(0, 3))
+        expect(ran).toContain(runKey(screen.charIds, outcome.assignment));
   }, 120_000);
 
   it("finds a conflict-free pairing when both halves want the same gear", async () => {

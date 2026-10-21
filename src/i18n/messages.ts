@@ -2262,6 +2262,10 @@ export const i18nUiData = {
       en: "Alternatives that join are scored with their default rotation, not yours",
       zh: "替补角色上场时按其默认循环计算，而非你配置的循环",
     },
+    noSavedRotation: {
+      en: "No rotation saved for this team, so lineups score its default rotation. Set one in Analysis to match how you play.",
+      zh: "该队伍尚未保存循环，阵容规划按默认循环计算。可在分析中设置与实战一致的循环。",
+    },
     ownTeamExcluded: {
       en: "The team itself breaks these rules, so every margin is measured against a team that is never fielded. Put the character you play in the team.",
       zh: "队伍本身不满足这些规则，所有余量都以一支不会上场的队伍为基准。请把实际上场的角色放进队伍。",

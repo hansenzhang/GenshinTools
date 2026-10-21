@@ -221,8 +221,8 @@ usually somewhat slower per evaluation, but it runs one optimizer worker per mem
      - compositions with unowned characters are skipped.
 
      `compositionObjective` keeps the lines of members who stay and adds the default lines of
-     members who join (`joiningMemberLines`, shared with character replacement). A
-     single-formula objective is dropped when its character leaves.
+     members who join (`joiningMemberLines`, shared with character replacement). The objective
+     is always a rotation (see "Scoring objective", 2026-10-21).
   3. Ranks up to 64 compositions with generated artifacts at their current sets. The P1 screen
      then runs for up to 4: the best, the best without each member that some composition
      leaves out, then the next best.
@@ -440,3 +440,43 @@ To confirm it, runs are now observable:
   therefore be exported; `trace.inFlight` names the run it was on. Debug export version 2.
 - `tests/benchmark/lineupReplay.ts --trace` prints the spans and the run in progress. With
   `--budget-sec 0` it times the same runs in Node.
+
+## P3 fixes (2026-10-21)
+
+A Stygian export (Domovoy Sculptor, Overseer Device, Guardian Blade) listed Yae and Odette as
+any pieces, though they deal 20–30% of their teams' damage, and gave the Mizuki team with
+Faruzan ×3.0. Causes:
+
+- **Teams without a saved rotation were scored on one formula.** With no damage settings, a
+  team resolved to single-formula mode with slot 1's first formula: `sandrone-normal ×1` and
+  `mizuki-skill-initial ×1` (851 damage). On the default rotation Yae deals 39% of the
+  Sandrone team's damage and Odette 58% of the Mizuki team's. Under one Sandrone or Mizuki hit
+  they moved nothing, so they fell under `LINEUP_ANY_PIECES_PERCENT`. The search geared Mizuki
+  for ATK to raise that one hit. Re-scored on the default rotation, the ×3.0 Faruzan build is
+  ×0.43 of the recorded build, and the Sucrose build with the recorded sets (×1.46) is ×0.88.
+- **A composition's finalists could be skipped.** The run round-robin de-duplicated finalists
+  by `assignmentKey`, which names each slot's sets but not its member. A joining alternative
+  takes the slot of the member it replaces, so its finalists matched the core's and were never
+  run on the account.
+
+Changes:
+
+- **Scoring objective.** A lineup scores the team's saved rotation, or the default rotation
+  when none is saved. A selected single formula is never used: margins compare whole-team clear
+  times. A template whose team has no saved rotation says so.
+- Planned runs are keyed by members and sets.
+
+Replayed in Node at 30 s per team, Yae and Odette are no longer any pieces. Faruzan's best
+account build is ×0.97 against Sucrose's ×1.10, and its composition ranks below Sucrose's
+(account estimate ×0.86 against ×1.15 at the current sets).
+
+Found in the same replay, not fixed:
+
+- **The optimizer prunes a slot before it groups by set.** `prepareSlotData` keeps the top
+  `maxArtsPerSlot` pieces per slot by score (and, for the carry, drops unlevelled pieces past
+  the top N) before it checks the set goal. Mizuki's 4★ Instructor flowers and plumes fell
+  out, so 7 of the Mizuki team's 10 runs failed `set-impossible`. The account estimate ranked
+  those runs at ×1.33–1.49, because it picks from the whole inventory. The pool is shared by
+  every optimizer caller, so the fix belongs with the optimizer.
+- **At 30 s per team no full lineup fit.** Every boss triple shared a piece; the account owns
+  one VV flower. The chains did not produce a conflict-free set within that budget.

@@ -272,7 +272,6 @@ function scoreReference(
   reference: ReferenceBuild,
   task: Task,
   objective: ComboFormula,
-  singleFormula: boolean,
   teamCharIds: readonly string[],
   context: CalcContext,
   userBuffOverrides: ReturnType<typeof extractComboOverrides>
@@ -285,12 +284,7 @@ function scoreReference(
   }));
   const team = tryTeamBuild(configs, setupConfig, context);
   if (!team) return null;
-  const combo = compositionObjective(
-    objective,
-    singleFormula,
-    team,
-    teamCharIds
-  );
+  const combo = compositionObjective(objective, team, teamCharIds);
   if (!combo) return null;
   const sheets = Object.fromEntries(
     configs.map((config) => [
@@ -673,8 +667,6 @@ async function generateTaskCandidates(
   if (!teamBuild) return "no-objective";
   const objective = resolveTeamObjective(setupConfig.damage, teamBuild);
   if (objective.lines.length === 0) return "no-objective";
-  const singleFormula =
-    (setupConfig.damage?.formulaMode ?? "single") === "single";
   const userBuffOverrides = extractComboOverrides(
     request.comboOverrides,
     objective.id
@@ -685,7 +677,6 @@ async function generateTaskCandidates(
     reference,
     task,
     objective,
-    singleFormula,
     teamCharIds,
     contexts.display,
     userBuffOverrides
@@ -752,8 +743,7 @@ async function generateTaskCandidates(
     const configs = buildTeamSlotConfigs(fielded, setupConfig, account);
     if (configs.length !== composition.length) continue;
     const team = tryTeamBuild(configs, setupConfig, contexts.display);
-    const combo =
-      team && compositionObjective(objective, singleFormula, team, teamCharIds);
+    const combo = team && compositionObjective(objective, team, teamCharIds);
     const job = combo && prepare(fielded, combo, []);
     if (job) jobs.push(job);
   }
@@ -844,8 +834,12 @@ async function generateTaskCandidates(
         },
       ]
     : [];
+  // Keyed by members too: a joiner takes the slot of the member it replaces,
+  // so two compositions can screen the same sets slot for slot.
+  const runKey = (assignment: SetAssignment, charIds: readonly string[]) =>
+    `${charIds.join(",")}:${assignmentKey(assignment, charIds)}`;
   const planned = new Set(
-    runs.map((run) => assignmentKey(run.assignment, run.job.charIds))
+    runs.map((run) => runKey(run.assignment, run.job.charIds))
   );
   for (let rank = 0; runs.length < state.runCount; rank++) {
     const next = screened.filter((entry) => rank < entry.order.length);
@@ -853,7 +847,7 @@ async function generateTaskCandidates(
     for (const entry of next) {
       if (runs.length >= state.runCount) break;
       const outcome = entry.outcomes[entry.order[rank]];
-      const key = assignmentKey(outcome.assignment, entry.job.charIds);
+      const key = runKey(outcome.assignment, entry.job.charIds);
       if (planned.has(key)) continue;
       planned.add(key);
       runs.push({
