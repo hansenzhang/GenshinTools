@@ -3,8 +3,8 @@
 Status: decisions and design, 2026-10-16. P1 is implemented as Build comparison › Team sets,
 P0 as Team Comp › Lineups (2026-10-18), P2 as Lineups › Abyss lineups and P3 as Lineups ›
 Stygian lineup (2026-10-19), with the fixes in "P3 fixes". P5 is implemented as Lineups ›
-Worth levelling (2026-10-21, "P5 levelling advisor"), with "P5 follow-ups". P4 has one
-measured run ("P4 comparison", 2026-10-21); P6 is not done.
+Worth levelling (2026-10-21, "P5 levelling advisor"), with "P5 follow-ups". P4 has two
+measured runs ("P4 comparison" and its second export, 2026-10-21); P6 is not done.
 Source: the feasibility study in `~/mistilteinn/reference/notes/team-solver-study.md`, which
 compares this repo with Genshin Optimizer (GO) and gcsim, and the decisions made with the user
 after it.
@@ -996,3 +996,44 @@ The user accepted the recommendation above, with Analysis showing the same numbe
 - Follow-ups: self timed buffs (Heart of the Furnace's ATK, Scarlet Proof), character and weapon
   durations, and a second wearer of the same set (one share per set; `noStackId` already keeps
   one buff).
+
+## P4 comparison, second export (2026-10-21)
+
+The Stygian export of 2026-10-21 18:20, read from its own diversify trace (`lineupReplay.ts
+--no-run --diversify`; the run finished inside its 1,200 s budget, 76 runs, 79 candidates). Its
+teams now have rotation seconds (20 s each) and set shares entered by hand: Sandrone's team
+Noblesse and Instructor 40%, Mizuki's VV and Tenacity 60%, Lunar's VV 60% and Silken Moon 100%.
+The recorded clears give the recorded builds ×1.000 (Sandrone), ×0.750 (Mizuki) and ×0.500
+(Lunar). Margins:
+
+| Setup | Lunar (10123) | Mizuki (10013) | Sandrone (10121) | Floor |
+|---|---|---|---|---|
+| Sequential with set search, weakest first | ×0.712 (Sucrose, Cryo Traveler) | none | — | incomplete |
+| Sequential with set search, strongest first | ×0.513 | ×1.195 | ×1.411 | ×0.513 |
+| Joint leximin, every pass (the exported plan) | ×0.542 (Linnea, Xiangling) | ×0.731 (Diona) | ×1.198 (Layla) | ×0.542 |
+| Joint, without either chain | same | same | same | ×0.542 |
+| Joint, without the pairwise fixes | ×0.513 | ×1.195 | ×1.411 | ×0.513 |
+| Joint, no diversify | | | | no lineup |
+| Least shortfall (the export's second plan) | ×0.513 | ×1.195 | ×1.411 | ×0.513 |
+
+- **Weakest first fails on characters, not gear.** Lunar's best build takes Sucrose and Cryo
+  Traveler, and every Mizuki candidate has one of them. The chain reserves only characters that
+  are in *every* candidate of a later boss (Mizuki, Odette), so it cannot see that the pick
+  leaves Mizuki nothing.
+- **The joint plan beats the best sequential lineup by 5.6% on the floor**, past the 3% tie, so
+  this export does not meet the gate's stop condition. The gain comes from the MILP fielding a
+  searched Lunar build (Linnea, Xiangling) that no chain kept, beside a pairwise-fix Sandrone
+  re-run. Without the pairwise fixes the joint plan is the strongest-first lineup.
+- **The floor costs Mizuki her clear.** Lunar ×0.542 keeps two pieces Mizuki's Cryo Traveler
+  builds use (Ineffa's Aubade ATK% sands and goblet), so Mizuki falls to Diona, ×1.195 → ×0.731:
+  two bosses short instead of one, for 5.6% on a boss that needs 1.85× its damage either way.
+- **The candidate that would beat both plans was never run**: Mizuki with Cryo Traveler cleared
+  of the ×0.542 Lunar build's pieces. Strongest first clears the other way (Lunar of Mizuki,
+  ×0.542 → ×0.513), and the pairwise fixes spend their four re-runs
+  (`LINEUP_MAX_DIVERSIFY_RUNS`) on the pairs whose weaker team is strongest, which are all
+  Sandrone ↔ Mizuki; no Lunar pair gets one.
+- **Reading for the gate**: the joint plan wins here because the chain's character reservation is
+  too narrow, not because jointly packed candidates beat sequential set search. A weakest-first
+  chain that keeps every later boss at least one character-free candidate would pick the Linnea,
+  Xiangling Lunar build first and then try that Mizuki re-run. Not measured: that chain, and a
+  replay until done.
