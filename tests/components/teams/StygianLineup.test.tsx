@@ -1,4 +1,5 @@
 import userEvent from "@testing-library/user-event";
+import { toast } from "sonner";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { StygianLineup } from "@/components/teams/StygianLineup";
 import type { Slot } from "@/domain/enums";
@@ -13,12 +14,15 @@ import type {
 } from "@/domain/team/lineupSolverTypes";
 import type { StygianEncounter } from "@/domain/team/lineupTypes";
 import type { LevellingAdviceState } from "@/hooks/useLevellingAdvice";
-import type { LineupSolverState } from "@/hooks/useLineupSolver";
+import {
+  closeLineupRun,
+  type LineupSolverState,
+} from "@/hooks/useLineupSolver";
 import type { StygianPlanState } from "@/hooks/useStygianPlan";
 import { useAccountStore } from "@/stores/useAccountStore";
 import { useLineupStore } from "@/stores/useLineupStore";
 import { useTeamStore } from "@/stores/useTeamStore";
-import { render, screen } from "../../utils/render";
+import { cleanup, render, screen } from "../../utils/render";
 
 const mocks = vi.hoisted(() => ({
   solver: null as LineupSolverState | null,
@@ -27,7 +31,8 @@ const mocks = vi.hoisted(() => ({
   levelling: null as LevellingAdviceState | null,
   levellingRequests: [] as (LevellingRequest | null)[],
 }));
-vi.mock("@/hooks/useLineupSolver", () => ({
+vi.mock("@/hooks/useLineupSolver", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/hooks/useLineupSolver")>()),
   useLineupSolver: () => mocks.solver,
 }));
 vi.mock("@/hooks/useLevellingAdvice", () => ({
@@ -170,6 +175,7 @@ async function exportDebugFile() {
 }
 
 beforeEach(() => {
+  closeLineupRun("stygian");
   localStorage.clear();
   useTeamStore.getState().clearTeams();
   useLineupStore.setState({ encounters: [], templates: [], calibrations: [] });
@@ -544,5 +550,77 @@ describe("StygianLineup", () => {
     expect(data.result.candidates).toHaveLength(4);
     expect(data.calibrated[0].margin).toBeCloseTo((1.2 * 110) / 90, 10);
     expect(data.plan).toEqual({ mode: "stygian", result: plan });
+  });
+
+  it("shows an exported run from the file, not the current setup", async () => {
+    seed();
+    const data = await exportDebugFile();
+    cleanup();
+    // The setup moves on: the teams are gone and nothing has run.
+    useTeamStore.getState().clearTeams();
+    mocks.solver = { ...(mocks.solver as LineupSolverState), result: null };
+    const user = userEvent.setup();
+    const { container } = render(<StygianLineup />);
+    expect(screen.queryByText("Diluc")).toBeNull();
+    const input =
+      container.querySelector<HTMLInputElement>('input[type="file"]');
+    if (!input) throw new Error("no file input");
+    await user.upload(
+      input,
+      new File([JSON.stringify(data)], "run.json", {
+        type: "application/json",
+      })
+    );
+    expect(await screen.findByText(/Showing the run exported/)).toBeTruthy();
+    // Team names, encounters and candidates come from the file.
+    expect(mocks.planRequests.at(-1)?.candidates).toHaveLength(4);
+    mocks.plan = {
+      result: {
+        plans: [
+          {
+            kind: "leximin",
+            candidateIds: { b1: "c1", b2: "c2", b3: "c3" },
+            weakest: 0.88,
+          },
+        ],
+        missingEncounterIds: [],
+        binding: [],
+      },
+      error: null,
+      isSolving: false,
+    };
+    await user.click(screen.getByRole("button", { name: "Close" }));
+    await user.upload(
+      input,
+      new File([JSON.stringify(data)], "run.json", {
+        type: "application/json",
+      })
+    );
+    expect((await screen.findAllByText("Diluc")).length).toBeGreaterThan(0);
+    expect(screen.queryByText(/Team removed/)).toBeNull();
+    expect(
+      screen.queryByRole("button", { name: "Export debug file" })
+    ).toBeNull();
+    await user.click(screen.getByRole("button", { name: "Close" }));
+    expect(screen.queryByText(/Showing the run exported/)).toBeNull();
+  });
+
+  it("refuses a file that is not a lineup debug export", async () => {
+    seed();
+    const error = vi.spyOn(toast, "error").mockImplementation(() => "");
+    const user = userEvent.setup();
+    const { container } = render(<StygianLineup />);
+    const input =
+      container.querySelector<HTMLInputElement>('input[type="file"]');
+    if (!input) throw new Error("no file input");
+    await user.upload(
+      input,
+      new File(['{"format":"GOOD"}'], "good.json", {
+        type: "application/json",
+      })
+    );
+    expect(error).toHaveBeenCalledWith("This file is not a lineup debug file");
+    expect(screen.queryByText(/Showing the run exported/)).toBeNull();
+    error.mockRestore();
   });
 });

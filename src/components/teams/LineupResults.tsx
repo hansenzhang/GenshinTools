@@ -1,5 +1,13 @@
-import { FileDown, Loader2, Play } from "lucide-react";
-import { type ReactNode, useEffect, useId, useMemo, useState } from "react";
+import { FileDown, FileUp, Loader2, Play, X } from "lucide-react";
+import {
+  type ReactNode,
+  useEffect,
+  useId,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
+import { toast } from "sonner";
 import { ArtifactDataHoverCard } from "@/components/shared/ArtifactDataHoverCard";
 import { CharAvatar } from "@/components/shared/CharAvatar";
 import { VALUE_COLORS } from "@/components/shared/colors";
@@ -21,7 +29,10 @@ import {
   LINEUP_MARGIN_TIE_PERCENT,
   LINEUP_TIME_BUDGET_OPTIONS_SEC,
 } from "@/domain/combat/lineup/constants";
-import { buildLineupDebugExport } from "@/domain/combat/lineup/debugExport";
+import {
+  buildLineupDebugExport,
+  readLineupDebugExport,
+} from "@/domain/combat/lineup/debugExport";
 import { maxPieceLevel } from "@/domain/combat/lineup/levelling";
 import { allSlots } from "@/domain/enums";
 import { runTriage } from "@/domain/game-account/triage/triageEngine";
@@ -41,8 +52,11 @@ import { normalizeTeamSetupConfig } from "@/domain/team/teamDeltas";
 import type { OptPhase } from "@/domain/team/types";
 import { useActiveAccountData } from "@/hooks/useActiveAccount";
 import {
+  closeLineupRun,
   type LineupSolverProgress,
   useLineupSolver,
+  useViewedLineupRun,
+  viewLineupRun,
 } from "@/hooks/useLineupSolver";
 import { cn } from "@/lib/utils";
 import { useBuffOverrideStore } from "@/stores/useBuffOverrideStore";
@@ -114,7 +128,7 @@ export interface TeamNames {
   name: (templateId: string) => string;
 }
 
-export function useTemplateNames(): TeamNames {
+function useTemplateNames(): TeamNames {
   const { t } = useLanguage();
   const templates = useLineupStore((s) => s.templates);
   const teams = useTeamStore((s) => s.teamComps);
@@ -128,11 +142,31 @@ export function useTemplateNames(): TeamNames {
   };
 }
 
+/** Team names as an exported run saved them. */
+function requestTemplateNames(
+  request: LineupSolverRequest,
+  t: Translate
+): TeamNames {
+  return {
+    name: (templateId) => {
+      const index = request.teams.findIndex(
+        (team) => team.template.id === templateId
+      );
+      if (index === -1) return t.ui("lineup.teamRemoved");
+      return (
+        request.teams[index].teamComp.name ||
+        t.format("teamComp.teamIndex", index + 1)
+      );
+    },
+  };
+}
+
 /**
  * The candidate job for one mode: its encounters, recorded clears and teams,
  * the run's inputs and candidates with margins from the current clears.
  * Clear times, downtime and bars are left out of the inputs, since they only
- * change margins.
+ * change margins. While an exported run is open, everything shown comes from
+ * the file; Find lineups still runs the current setup.
  */
 export function useLineupJob(
   mode: EncounterMode,
@@ -151,6 +185,9 @@ export function useLineupJob(
   const buildGroups = useBuildsStore(selectEnabledBuildGroups);
   const allBuildGroups = useBuildsStore(selectResolvedBuildGroups);
   const triageSettings = useTriageStore(selectActiveTriageSettings);
+  const { t } = useLanguage();
+  const storeNames = useTemplateNames();
+  const viewed = useViewedLineupRun(mode);
   // Locked pieces and the ones Triage recommends locking.
   const keeperArtifactIds = useMemo(() => {
     if (!keepersOnly || !accountData) return undefined;
@@ -285,6 +322,41 @@ export function useLineupJob(
   const run = () => {
     if (request) solver.start(request);
   };
+  const view = useMemo(() => {
+    if (!viewed) return null;
+    const viewedEncounters = viewed.request.encounters.filter(
+      (encounter) => encounter.mode === mode
+    );
+    return {
+      exportedAt: viewed.exportedAt,
+      encounters: viewedEncounters,
+      calibrations: viewed.request.calibrations.filter((calibration) =>
+        viewedEncounters.some(
+          (encounter) => encounter.id === calibration.encounterId
+        )
+      ),
+      request: viewed.request,
+      signature: `file:${viewed.exportedAt}`,
+      calibrated: viewed.calibrated,
+      artifacts: getAllArtifacts(viewed.request.accountData),
+      levelToMax: viewed.request.levelToMax === true,
+    };
+  }, [viewed, mode]);
+  /** Shows an exported run in this section, or says why it cannot. */
+  const openDebug = async (file: File) => {
+    const text = await file.text().catch(() => "");
+    const read = readLineupDebugExport(text);
+    if (read.kind === "not-export") toast.error(t.ui("lineup.debugNotExport"));
+    else if (read.kind === "unsupported-version")
+      toast.error(t.format("lineup.debugVersion", read.version));
+    else if (read.data.request.mode !== mode)
+      toast.error(
+        read.data.request.mode === "abyss"
+          ? t.ui("lineup.debugAbyssFile")
+          : t.ui("lineup.debugStygianFile")
+      );
+    else viewLineupRun(read.data);
+  };
   /** Saves the run's inputs and results as a JSON file. */
   const exportDebug = (plan: LineupDebugPlan) => {
     if (!request || !result) return;
@@ -305,24 +377,38 @@ export function useLineupJob(
     URL.revokeObjectURL(url);
   };
   return {
-    encounters,
-    calibrations,
-    solver,
-    /** The run's inputs; null without an account. */
-    request,
+    encounters: view?.encounters ?? encounters,
+    calibrations: view?.calibrations ?? calibrations,
+    solver: view
+      ? {
+          ...solver,
+          result: viewed?.result ?? null,
+          progress: null,
+          error: null,
+          isComputing: false,
+          startedAt: null,
+        }
+      : solver,
+    /** The shown run's inputs; null without an account. */
+    request: view?.request ?? request,
     /** The inputs that change candidates: clear times and bars are left
      *  out, unless a clear weights its encounter's RES phases. */
-    signature,
-    calibrated,
+    signature: view?.signature ?? signature,
+    calibrated: view?.calibrated ?? calibrated,
     /** The account's pieces, for filling members that take any pieces. */
-    artifacts,
+    artifacts: view?.artifacts ?? artifacts,
     /** The shown run scores pieces below max level as levelled: results
      *  follow the signature, which includes it. */
-    levelToMax,
+    levelToMax: view?.levelToMax ?? levelToMax,
+    names: view ? requestTemplateNames(view.request, t) : storeNames,
+    /** When the open exported run was saved; null for the live run. */
+    viewedAt: view?.exportedAt ?? null,
     hasAccount: accountData != null,
     canRun: request != null && teams.length > 0,
     run,
     exportDebug,
+    openDebug,
+    closeView: () => closeLineupRun(mode),
   };
 }
 
@@ -504,7 +590,8 @@ function runPositionLabel(run: LineupRunProgress, t: Translate): string {
 
 /** Settings row, Run/Stop, a hint when it cannot run, progress and errors.
  *  A finished or stopped run can be saved with `debugPlan` for
- *  troubleshooting. */
+ *  troubleshooting, and a saved one opened again; while it is open, a line
+ *  says which run is shown in place of the settings. */
 export function LineupRunControls({
   job,
   settings,
@@ -516,9 +603,10 @@ export function LineupRunControls({
   needClearHint: string;
   debugPlan: LineupDebugPlan;
 }) {
-  const { t } = useLanguage();
+  const { t, language } = useLanguage();
   const { solver } = job;
   const { progress } = solver;
+  const fileInput = useRef<HTMLInputElement>(null);
   const elapsed = useElapsed(solver.startedAt, solver.isComputing);
   const run = progress?.run;
   const runElapsed = useElapsed(run?.startedAt ?? null, solver.isComputing);
@@ -529,9 +617,24 @@ export function LineupRunControls({
   };
   return (
     <>
-      <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5">
-        {settings}
-      </div>
+      {job.viewedAt ? (
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 rounded-md border border-primary/40 bg-primary/10 px-2 py-1.5">
+          <span className="mr-auto text-xs font-semibold md:text-sm">
+            {t.format(
+              "lineup.viewingRun",
+              new Date(job.viewedAt).toLocaleString(language)
+            )}
+          </span>
+          <Button onClick={job.closeView} variant="outline" size="sm">
+            <X className="mr-1 h-4 w-4" />
+            {t.ui("manager.close")}
+          </Button>
+        </div>
+      ) : (
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5">
+          {settings}
+        </div>
+      )}
       <div className="flex flex-col items-center gap-1 py-1">
         <div className="flex flex-wrap items-center justify-center gap-2">
           <Button
@@ -552,7 +655,7 @@ export function LineupRunControls({
               </>
             )}
           </Button>
-          {solver.result && !solver.isComputing && (
+          {solver.result && !solver.isComputing && !job.viewedAt && (
             <Button
               onClick={() => job.exportDebug(debugPlan)}
               variant="outline"
@@ -563,6 +666,28 @@ export function LineupRunControls({
               {t.ui("lineup.exportDebug")}
             </Button>
           )}
+          {!solver.isComputing && (
+            <Button
+              onClick={() => fileInput.current?.click()}
+              variant="outline"
+              size="sm"
+              title={t.ui("lineup.openDebugTip")}
+            >
+              <FileUp className="mr-1 h-4 w-4" />
+              {t.ui("lineup.openDebug")}
+            </Button>
+          )}
+          <input
+            ref={fileInput}
+            type="file"
+            accept=".json,application/json"
+            className="hidden"
+            onChange={(event) => {
+              const file = event.target.files?.[0];
+              event.target.value = "";
+              if (file) void job.openDebug(file);
+            }}
+          />
         </div>
         {!job.canRun && (
           <p className="text-center text-xs text-muted-foreground md:text-sm">

@@ -36,7 +36,6 @@ import {
   TimeBudgetSelect,
   useIssueLines,
   useLineupJob,
-  useTemplateNames,
 } from "./LineupResults";
 
 /** Abyss lineup settings for this session. */
@@ -181,7 +180,6 @@ function ChamberCard({
 
 export function AbyssLineups() {
   const { t } = useLanguage();
-  const names = useTemplateNames();
   const [settings, setSettings] = useState(sessionSettings);
   const updateSettings = (next: typeof settings) => {
     sessionSettings = next;
@@ -193,7 +191,7 @@ export function AbyssLineups() {
     settings.keepersOnly,
     settings.levelToMax
   );
-  const { encounters, calibrations, calibrated } = job;
+  const { encounters, calibrations, calibrated, names } = job;
   const { result } = job.solver;
   // Chambers without a recorded clear on either half have nothing to show.
   const plans = useMemo(

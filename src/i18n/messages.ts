@@ -2347,6 +2347,31 @@ export const i18nUiData = {
       en: "Saves this run's inputs and results, including your account data, as a JSON file for troubleshooting",
       zh: "将本次搜索的输入和结果（含账号数据）保存为 JSON 文件，用于排查问题",
     },
+    openDebug: { en: "Open debug file", zh: "打开调试文件" },
+    openDebugTip: {
+      en: "Shows the results saved in an exported debug file. Your current teams and account are not changed",
+      zh: "查看导出的调试文件里保存的搜索结果，不会改动当前的队伍和账号数据",
+    },
+    viewingRun: {
+      en: "Showing the run exported {0}",
+      zh: "正在查看 {0} 导出的搜索结果",
+    },
+    debugNotExport: {
+      en: "This file is not a lineup debug file",
+      zh: "这不是阵容调试文件",
+    },
+    debugVersion: {
+      en: "This debug file's version ({0}) can't be opened by this version of the app",
+      zh: "当前版本无法打开该调试文件（文件版本 {0}）",
+    },
+    debugAbyssFile: {
+      en: "This file holds an Abyss run: open it under Abyss lineups",
+      zh: "这是深渊阵容的调试文件，请在深渊阵容中打开",
+    },
+    debugStygianFile: {
+      en: "This file holds a Stygian Onslaught run: open it under Stygian lineup",
+      zh: "这是幽境危战阵容的调试文件，请在幽境危战阵容中打开",
+    },
     needAbyssClear: {
       en: "Record a clear of an Abyss half to find lineups",
       zh: "记录一次深渊半场通关后才能搜索阵容",

@@ -1089,3 +1089,42 @@ With alternative teams per boss (18:52), the choice of which team goes where is 
 problem a single chain order does not solve, so the multi-team work does not stop at the gate.
 Open: whether the lead plan should stay leximin when the floor is far below ×1, given that
 twice the least-shortfall plan clears one more boss.
+
+## Run viewer (design, 2026-10-22)
+
+The question from testing: a finished run disappears as soon as an input changes, so comparing
+runs meant screenshots. The debug export already holds everything the results show (the request
+with its account, teams and clears, the candidates with margins, and the plan).
+
+- **Open debug file**, next to Export debug file in each section, reads an export back and shows
+  it in place of the section's results until **Close** or Find lineups. Nothing is saved: the
+  file is the record, so there is no store, schema version or migration.
+- The shown run comes entirely from the file: encounters, recorded clears, team names, the
+  account's pieces (for members that take any pieces), Level to max, candidates and margins.
+  The plan and levelling advice are worked out again from it, as for a live run. The encounter
+  and template editors above keep showing the current setup.
+- While a file is shown, the run settings and Export are hidden and a line says which run it is.
+  Find lineups runs the current setup and closes the file.
+- `readLineupDebugExport` in `domain/combat/lineup/debugExport.ts` is the one reader, for the page
+  and `tests/benchmark/lineupReplay.ts`. It returns the run, or why the file cannot be read
+  (not an export, or an unsupported version), and fills what older versions lack (v2: no RES
+  phases; before v3: no diversify trace).
+- A file from the other mode is refused with a pointer to its section.
+- Not done: keeping runs across reloads (results are about 1.5 MB, too large for localStorage
+  beside the other stores), and comparing two runs side by side.
+
+### As built (2026-10-22)
+
+- `readLineupDebugExport` returns `LineupDebugRead` (`run`, `not-export`, `unsupported-version`);
+  the replay script reads through it.
+- `useLineupSolver.ts` keeps the viewed run per mode beside the jobs (`viewLineupRun`,
+  `closeLineupRun`, `useViewedLineupRun`); starting a job closes it.
+- `useLineupJob` returns the file's encounters, clears, request, candidates, pieces, Level to
+  max and team names while one is open (`viewedAt`), and the live request for Find lineups. Team
+  names moved into the job (`job.names`), since a file's teams may no longer exist.
+- `LineupRunControls`: Open debug file beside Export; while a file is open, a line with its
+  export time and Close replaces the settings, and Export is hidden. A file that cannot be read
+  says why in a toast.
+- Tests: `tests/domain/combat/lineup/debugExport.test.ts` (round trip, not an export, version,
+  v2 fill-ins); `StygianLineup.test.tsx` opens an exported run after the teams are deleted and
+  shows the file's team names, closes it, and refuses a GOOD file. Not checked in a browser.

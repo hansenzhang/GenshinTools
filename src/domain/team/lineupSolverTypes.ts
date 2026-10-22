@@ -402,6 +402,12 @@ export interface LineupDebugExport {
   plan: LineupDebugPlan;
 }
 
+/** A debug export read back: the run, or why it cannot be shown. */
+export type LineupDebugRead =
+  | { kind: "run"; data: LineupDebugExport }
+  | { kind: "not-export" }
+  | { kind: "unsupported-version"; version: number };
+
 export type LineupSolverStage = "screen" | "optimize" | "diversify";
 
 /** Where the real-inventory run in progress is, and when it started

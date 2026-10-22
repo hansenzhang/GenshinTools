@@ -26,7 +26,6 @@ import {
   TimeBudgetSelect,
   useIssueLines,
   useLineupJob,
-  useTemplateNames,
 } from "./LineupResults";
 
 /** Stygian lineup settings for this session. */
@@ -36,13 +35,12 @@ let sessionLevelToMax = false;
 
 export function StygianLineup() {
   const { t } = useLanguage();
-  const names = useTemplateNames();
   const encounterLabel = useEncounterLabel();
   const [timeBudgetSec, setTimeBudgetSec] = useState(sessionTimeBudgetSec);
   const [keepersOnly, setKeepersOnly] = useState(sessionKeepersOnly);
   const [levelToMax, setLevelToMax] = useState(sessionLevelToMax);
   const job = useLineupJob("stygian", timeBudgetSec, keepersOnly, levelToMax);
-  const { encounters, calibrated } = job;
+  const { encounters, calibrated, names } = job;
   const { result } = job.solver;
   const planRequest = useMemo<StygianPlanRequest | null>(
     () =>

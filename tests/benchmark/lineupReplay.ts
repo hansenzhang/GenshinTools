@@ -29,12 +29,14 @@ import loadHighs from "highs";
 import { planAbyssChambers } from "@/domain/combat/lineup/abyssPairs";
 import { calibrateCandidates } from "@/domain/combat/lineup/candidates";
 import {
-  LINEUP_DEBUG_FORMAT,
   LINEUP_DEBUG_VERSION,
   LINEUP_MARGIN_TIE_PERCENT,
   LINEUP_PAIRINGS_SHOWN,
 } from "@/domain/combat/lineup/constants";
-import { buildLineupDebugExport } from "@/domain/combat/lineup/debugExport";
+import {
+  buildLineupDebugExport,
+  readLineupDebugExport,
+} from "@/domain/combat/lineup/debugExport";
 import { setChoiceKey } from "@/domain/combat/lineup/setChoices";
 import { planStygianRun } from "@/domain/combat/lineup/stygianPlan";
 import { allSlots } from "@/domain/enums";
@@ -68,19 +70,14 @@ function parseArgs(argv: string[]): Record<string, string> {
 }
 
 function readExport(path: string): LineupDebugExport {
-  const data = JSON.parse(readFileSync(path, "utf8")) as LineupDebugExport;
-  if (data.format !== LINEUP_DEBUG_FORMAT)
+  const read = readLineupDebugExport(readFileSync(path, "utf8"));
+  if (read.kind === "not-export")
     throw new Error(`${path} is not a lineup debug export.`);
-  // Version 2 predates RES phases: its encounters have none.
-  if (data.version === 2)
-    for (const encounter of data.request.encounters) encounter.resPhases ??= [];
-  else if (data.version !== LINEUP_DEBUG_VERSION)
+  if (read.kind === "unsupported-version")
     throw new Error(
-      `${path} is version ${data.version}; this script reads 2 and ${LINEUP_DEBUG_VERSION}.`
+      `${path} is version ${read.version}; this script reads 2 and ${LINEUP_DEBUG_VERSION}.`
     );
-  // Exports before the diversify trace have none.
-  data.result.trace.diversify ??= [];
-  return data;
+  return read.data;
 }
 
 const percent = (value: number) => `${(value * 100).toFixed(1)}%`;

@@ -27,7 +27,8 @@ vi.mock("@/hooks/useLevellingAdvice", () => ({
     return { advice: null, error: null, isComputing: true };
   },
 }));
-vi.mock("@/hooks/useLineupSolver", () => ({
+vi.mock("@/hooks/useLineupSolver", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/hooks/useLineupSolver")>()),
   useLineupSolver: (_mode: string, signature: string) => {
     solver.signatures.push(signature);
     return solver.state;

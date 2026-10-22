@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useSyncExternalStore } from "react";
 import type {
+  LineupDebugExport,
   LineupSolverFailure,
   LineupSolverMessage,
   LineupSolverRequest,
@@ -48,11 +49,37 @@ const workers: Record<EncounterMode, Worker | null> = {
   abyss: null,
   stygian: null,
 };
+// A run read back from a debug export, shown in place of the job's result
+// until it is closed or a new run starts.
+let viewed: Record<EncounterMode, LineupDebugExport | null> = {
+  abyss: null,
+  stygian: null,
+};
 const listeners = new Set<() => void>();
+
+function notify() {
+  for (const listener of listeners) listener();
+}
 
 function update(mode: EncounterMode, patch: Partial<LineupSolverJob>) {
   jobs = { ...jobs, [mode]: { ...jobs[mode], ...patch } };
-  for (const listener of listeners) listener();
+  notify();
+}
+
+/** Shows an exported run in its mode's section. */
+export function viewLineupRun(data: LineupDebugExport) {
+  viewed = { ...viewed, [data.request.mode]: data };
+  notify();
+}
+
+export function closeLineupRun(mode: EncounterMode) {
+  viewed = { ...viewed, [mode]: null };
+  notify();
+}
+
+/** The exported run shown for `mode`, or null. */
+export function useViewedLineupRun(mode: EncounterMode) {
+  return useSyncExternalStore(subscribe, () => viewed[mode]);
 }
 
 function subscribe(listener: () => void) {
@@ -70,6 +97,7 @@ function stopJob(mode: EncounterMode) {
 function startJob(signature: string, request: LineupSolverRequest) {
   const { mode } = request;
   workers[mode]?.terminate();
+  viewed = { ...viewed, [mode]: null };
   update(mode, {
     signature,
     result: null,
