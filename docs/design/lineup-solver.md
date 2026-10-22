@@ -3,8 +3,8 @@
 Status: decisions and design, 2026-10-16. P1 is implemented as Build comparison › Team sets,
 P0 as Team Comp › Lineups (2026-10-18), P2 as Lineups › Abyss lineups and P3 as Lineups ›
 Stygian lineup (2026-10-19), with the fixes in "P3 fixes". P5 is implemented as Lineups ›
-Worth levelling (2026-10-21, "P5 levelling advisor"), with "P5 follow-ups". P4 has two
-measured runs ("P4 comparison" and its second export, 2026-10-21); P6 is not done.
+Worth levelling (2026-10-21, "P5 levelling advisor"), with "P5 follow-ups". P4 has four
+measured runs ("P4 comparison" and the later exports, 2026-10-21 and 22); P6 is not done.
 Source: the feasibility study in `~/mistilteinn/reference/notes/team-solver-study.md`, which
 compares this repo with Genshin Optimizer (GO) and gcsim, and the decisions made with the user
 after it.
@@ -1037,3 +1037,49 @@ The recorded clears give the recorded builds ×1.000 (Sandrone), ×0.750 (Mizuki
   chain that keeps every later boss at least one character-free candidate would pick the Linnea,
   Xiangling Lunar build first and then try that Mizuki re-run. Not measured: that chain, and a
   replay until done.
+
+## P4 comparison, 2026-10-22 exports
+
+Two more Stygian runs, read from their diversify traces as above. Both finished inside the
+1,200 s budget. The 19:06 export is the 18:52 run exported again (same request, result and
+plan).
+
+**11:35** (one team per boss: Lunar-Stellar, Mizuki Faruzan, Sandrone No Odette; 78 runs, 81
+candidates). Both chains build the same lineup in opposite orders, and the joint plan is that
+lineup: Mizuki Faruzan ×0.749 (searched), Sandrone ×1.053 and Lunar-Stellar ×1.249 (both
+weakest-first re-runs). Joint − sequential = 0. Without weakest-first, or with the pairwise
+fixes only, the plan falls to the three recorded builds (floor ×0.500): every searched
+Sandrone and Lunar build collides with another team.
+
+**18:52** (five teams with six calibrations: Sandrone No Odette on bosses 10121 and 10123,
+Lunar-Stellar on 10121, Mizuki best and Stellar Swirl Faruzan on 10013, Lunar flex on 10123;
+148 runs, 154 candidates). So the plan also chooses which team fights which boss.
+
+| Setup | 10121 | 10013 | 10123 | Floor |
+|---|---|---|---|---|
+| Sequential, weakest first | — | Mizuki best ×1.195 | Sandrone ×1.222 | incomplete |
+| Sequential, strongest first | Sandrone ×1.409 | Mizuki best ×1.195 | Lunar flex ×0.513 | ×0.513 |
+| Joint leximin (the exported plan) | Sandrone ×1.222 | Faruzan ×0.610 | Lunar flex ×0.584 (Sucrose, Xiangling) | ×0.584 |
+| Joint, without the pairwise fixes | | | | ×0.513 |
+| Joint, no diversify | Lunar-Stellar ×0.923 | Faruzan ×0.480 | Sandrone ×0.828 | ×0.480 |
+| Least shortfall (second plan) | Sandrone ×1.222 | Mizuki best ×1.128 | Lunar flex ×0.542 (Linnea, Xiangling) | ×0.542 |
+
+- **Weakest first fails again, on its order.** It ranks bosses by their best candidate, so
+  10123 (best ×1.222, Sandrone) goes first and takes Sandrone, the strongest team of 10121.
+  10121's other team, Lunar-Stellar, needs Sucrose or Cryo Traveler, whom Mizuki best has
+  taken. Reserving only characters in every candidate of a later boss reserves nothing when two
+  templates share no character.
+- **The joint plan beats the best sequential lineup by 13.8%**, and here the MILP does work no
+  chain does: it moves Mizuki to the Faruzan team so Lunar flex can take Sucrose, and it sends
+  Sandrone to 10121. That also needs the pairwise-fix Sandrone re-run (without the fixes, the
+  plan is strongest first).
+- **Leximin again trades a clear for the floor**: Mizuki ×1.128 → ×0.610 (two bosses short
+  instead of one) for +7.7% on Lunar, which needs 1.7× its damage either way. Same pattern as
+  the 18:20 export.
+
+**Gate reading over the four exports** (12:01, 18:20, 11:35, 18:52): joint = sequential on two;
+joint wins by 5.6% and 13.8% on two, each time where the weakest-first chain did not finish.
+With alternative teams per boss (18:52), the choice of which team goes where is a packing
+problem a single chain order does not solve, so the multi-team work does not stop at the gate.
+Open: whether the lead plan should stay leximin when the floor is far below ×1, given that
+twice the least-shortfall plan clears one more boss.
