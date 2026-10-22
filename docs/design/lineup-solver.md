@@ -3,7 +3,7 @@
 Status: decisions and design, 2026-10-16. P1 is implemented as Build comparison › Team sets,
 P0 as Team Comp › Lineups (2026-10-18), P2 as Lineups › Abyss lineups and P3 as Lineups ›
 Stygian lineup (2026-10-19), with the fixes in "P3 fixes". P5 is implemented as Lineups ›
-Worth levelling (2026-10-21, "P5 levelling advisor"), with "P5 follow-ups". P4 has four
+Worth levelling (2026-10-21, "P5 levelling advisor"), with "P5 follow-ups". P4 has five
 measured runs ("P4 comparison" and the later exports, 2026-10-21 and 22); P6 is not done.
 Source: the feasibility study in `~/mistilteinn/reference/notes/team-solver-study.md`, which
 compares this repo with Genshin Optimizer (GO) and gcsim, and the decisions made with the user
@@ -1051,6 +1051,12 @@ weakest-first re-runs). Joint − sequential = 0. Without weakest-first, or with
 fixes only, the plan falls to the three recorded builds (floor ×0.500): every searched
 Sandrone and Lunar build collides with another team.
 
+**12:16** (the 11:35 setup with Sucrose added as Mizuki Faruzan's third-slot flex; 78 runs, 81
+candidates). Same result shape: both chains and the joint plan give one lineup, Mizuki with
+Sucrose ×0.776 (searched; her best Faruzan build is still ×0.749), Sandrone ×1.054 and
+Lunar-Stellar ×1.266 (weakest-first re-runs). Joint − sequential = 0, and without weakest-first
+or with the pairwise fixes only, the floor falls to the recorded builds' ×0.500 again.
+
 **18:52** (five teams with six calibrations: Sandrone No Odette on bosses 10121 and 10123,
 Lunar-Stellar on 10121, Mizuki best and Stellar Swirl Faruzan on 10013, Lunar flex on 10123;
 148 runs, 154 candidates). So the plan also chooses which team fights which boss.
@@ -1077,7 +1083,7 @@ Lunar-Stellar on 10121, Mizuki best and Stellar Swirl Faruzan on 10013, Lunar fl
   instead of one) for +7.7% on Lunar, which needs 1.7× its damage either way. Same pattern as
   the 18:20 export.
 
-**Gate reading over the four exports** (12:01, 18:20, 11:35, 18:52): joint = sequential on two;
+**Gate reading over the five exports** (12:01, 18:20, 11:35, 12:16, 18:52): joint = sequential on three;
 joint wins by 5.6% and 13.8% on two, each time where the weakest-first chain did not finish.
 With alternative teams per boss (18:52), the choice of which team goes where is a packing
 problem a single chain order does not solve, so the multi-team work does not stop at the gate.
