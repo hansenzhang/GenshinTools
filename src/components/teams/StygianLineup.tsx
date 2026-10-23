@@ -22,6 +22,7 @@ import {
   LineupRow,
   LineupRunControls,
   MarginValue,
+  MissingPieceList,
   RunOptionToggle,
   TimeBudgetSelect,
   useIssueLines,
@@ -194,6 +195,9 @@ export function StygianLineup() {
             )}
             {plan?.kind === "leximin" && planState.result && (
               <BindingList items={planState.result.binding} lineup={chosen} />
+            )}
+            {planState.result && (
+              <MissingPieceList items={planState.result.missingPieces} />
             )}
             {plan && !noLineup && (
               <LevellingAdvice job={job} lineup={chosen} names={names} />

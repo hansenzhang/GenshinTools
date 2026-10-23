@@ -80,6 +80,20 @@ describe("readLineupDebugExport", () => {
     });
   });
 
+  it("lists no missing pieces for a plan saved before they were found", () => {
+    const old = {
+      ...exported(),
+      plan: {
+        mode: "stygian",
+        result: { plans: [], missingEncounterIds: [], binding: [] },
+      },
+    };
+    const read = readLineupDebugExport(JSON.stringify(old));
+    if (read.kind !== "run" || read.data.plan.mode !== "stygian")
+      throw new Error(read.kind);
+    expect(read.data.plan.result?.missingPieces).toEqual([]);
+  });
+
   it("fills RES phases and the diversify trace a version 2 file lacks", () => {
     const old = exported() as unknown as {
       request: { encounters: Record<string, unknown>[] };

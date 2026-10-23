@@ -68,6 +68,17 @@ function anyPieceSlots(member: LineupMember): string[] {
   return keys;
 }
 
+/** Set and slot keys the candidate's members that take any pieces need. */
+export function anyPieceSetSlots(candidate: LineupCandidate): string[] {
+  return [
+    ...new Set(
+      candidate.members.flatMap((member) =>
+        member.anyPieces ? anyPieceSlots(member) : []
+      )
+    ),
+  ];
+}
+
 /**
  * Pieces per set and slot the candidate takes from the account: its exact
  * pieces, plus what members that take any pieces need from their sets.

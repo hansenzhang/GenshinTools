@@ -48,5 +48,8 @@ export function readLineupDebugExport(text: string): LineupDebugRead {
     for (const encounter of data.request.encounters) encounter.resPhases ??= [];
   // Exports before the diversify trace have none.
   data.result.trace.diversify ??= [];
+  // Exports before 2026-10-23 list no missing pieces.
+  if (data.plan.mode === "stygian" && data.plan.result)
+    data.plan.result.missingPieces ??= [];
   return { kind: "run", data };
 }

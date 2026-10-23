@@ -449,6 +449,10 @@ function printRun(
       console.log(
         `  without ${item.kind} ${item.id}: ${item.marginWithout?.toFixed(3) ?? "no lineup"}`
       );
+    for (const item of debugPlan.result?.missingPieces ?? [])
+      console.log(
+        `  one more ${item.setKey} ${item.slot} (owned ${item.owned}): ${item.marginWith.toFixed(3)}`
+      );
   }
   const chosen = chosenIds(debugPlan);
   for (const encounter of request.encounters.filter(

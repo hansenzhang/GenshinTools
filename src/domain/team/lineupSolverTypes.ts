@@ -147,13 +147,26 @@ export interface StygianPlanRequest {
   tiePercent: number;
 }
 
+/** One more piece of a set and slot that members taking any pieces of the
+ *  set need, and the best weakest margin with it. Any stats will do. */
+export interface MissingPiece {
+  setKey: string;
+  slot: Slot;
+  /** Pieces of the set and slot owned now. */
+  owned: number;
+  marginWith: number;
+}
+
 export interface StygianPlanResult {
-  /** The leximin plan, then the shortfall plan when it differs. */
+  /** The shortfall plan when no lineup clears and it differs, then the
+   *  leximin plan. */
   plans: StygianPlan[];
   /** Encounters without a candidate; the plans leave them out. */
   missingEncounterIds: string[];
   /** Contested gear of the leximin plan, most costly to lose first. */
   binding: BindingItem[];
+  /** Pieces that would raise the weakest margin past the tie, most first. */
+  missingPieces: MissingPiece[];
 }
 
 export type StygianPlanMessage =

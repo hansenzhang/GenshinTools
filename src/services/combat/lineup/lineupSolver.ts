@@ -1177,32 +1177,6 @@ async function keepClear(
 ): Promise<LineupCandidate | null> {
   const source = state.sources.get(candidate.id);
   if (!source) return null;
-  let clear: LineupCandidate | null = candidate;
-  const contested = findContestedGear(
-    candidate,
-    other,
-    state.weaponCopies,
-    state.setSlotCounts
-  );
-  // Set slots run short when a member that takes any pieces was scored with
-  // the other's pieces, or the other's members that take any pieces need the
-  // slot's last ones: the re-run leaves those for the other.
-  if (contested.artifactIds.length > 0 || contested.setSlotKeys.length > 0) {
-    const excluded = [
-      ...candidateArtifactIds(other),
-      ...reservedSetSlotPieces(
-        other,
-        getAllArtifacts(state.request.accountData),
-        state.setSlotCounts
-      ),
-    ];
-    const key = `${candidate.id}|${[...excluded].sort().join(",")}`;
-    if (!state.reruns.has(key))
-      state.reruns.set(key, await rerunWithout(state, source, excluded));
-    clear = state.reruns.get(key) ?? null;
-    if (clear) found.add(clear.id);
-  }
-  if (!clear) return null;
   const fits = (entry: LineupCandidate) => {
     const left = findContestedGear(
       entry,
@@ -1212,6 +1186,33 @@ async function keepClear(
     );
     return left.artifactIds.length === 0 && left.setSlotKeys.length === 0;
   };
+  const rerun = async (excluded: readonly string[]) => {
+    const key = `${candidate.id}|${[...excluded].sort().join(",")}`;
+    if (!state.reruns.has(key))
+      state.reruns.set(key, await rerunWithout(state, source, excluded));
+    const result = state.reruns.get(key) ?? null;
+    if (result) found.add(result.id);
+    return result;
+  };
+  let clear: LineupCandidate | null = candidate;
+  if (!fits(candidate)) {
+    // Kept clear of the other's own pieces first. A re-run that still
+    // collides on set slots (the other's members that take any pieces need
+    // the slot's last ones) stays a candidate: one more piece of the slot
+    // would let it be fielded, which the plan's missing pieces report. The
+    // re-run then leaves those slots to the other.
+    const exact = candidateArtifactIds(other);
+    clear = await rerun(exact);
+    if (clear && !fits(clear)) {
+      const reserved = reservedSetSlotPieces(
+        other,
+        getAllArtifacts(state.request.accountData),
+        state.setSlotCounts
+      );
+      clear = reserved.length > 0 ? await rerun([...exact, ...reserved]) : null;
+    }
+  }
+  if (!clear) return null;
   if (
     findContestedGear(clear, other, state.weaponCopies).weaponIds.length === 0
   )

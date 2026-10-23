@@ -2488,6 +2488,15 @@ export const i18nUiData = {
       zh: "其他队伍也想用的角色和装备；数值为失去它后最佳阵容的最低余量。",
     },
     noAlternative: { en: "No alternative", zh: "无替代" },
+    missingPieces: { en: "One more piece", zh: "再多一件" },
+    missingPiecesTip: {
+      en: "Set pieces a member who can wear any pieces of the set still lacks, with the best weakest margin given one more. Any main stat and substats will do.",
+      zh: "可穿该套装任意圣遗物的角色还缺的部位；数值为多一件后最佳阵容的最低余量。主词条和副词条不限。",
+    },
+    missingPieceOwned: {
+      en: "{0}: {1} owned",
+      zh: "{0}：已有 {1} 件",
+    },
     stygianLineup: { en: "Stygian lineup", zh: "幽境危战阵容" },
     needStygianClear: {
       en: "Record a clear of a Stygian boss to find a lineup",

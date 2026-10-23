@@ -155,6 +155,29 @@ member takes "any pieces" of only needs the right set and slot (a strongbox piec
   re-plans' time is measured and stated; a test where one more piece of a slot lets two any-piece
   members fit.
 
+### As built (2026-10-23)
+
+- `keepClear` re-runs clear of the other team's exact pieces first; a result that still collides
+  on set slots stays a candidate, then a second re-run leaves those slots
+  (`reservedSetSlotPieces`). One extra re-run, only on a set-slot collision.
+- `planStygianRun` returns `missingPieces`: for each set slot a member taking any pieces needs
+  (`anyPieceSetSlots`), the best weakest margin with one more piece, listed when it beats the
+  current one past the tie. Lineups › Stygian lineup shows them as "One more piece" (再多一件)
+  under either plan; exports from before list none.
+- Tests: `stygianPlan.test.ts` (one more flower lifts ×1.1 to ×1.3 and is listed; four short
+  slots list nothing), `StygianLineup.test.tsx` (the row and its owned count),
+  `debugExport.test.ts` (older plans read with an empty list).
+- 18:52 replay (2,979 s in Node, `--dump`): floor ×0.711, every chain lineup fits, and weakest
+  first kept the colliding Lunar-Stellar build. The list is empty, correctly: one more VV flower
+  lifts Lunar-Stellar from ×0.974 to ×0.982 and leaves the floor (Faruzan ×0.711) as it is, and
+  no other of the 44 slots any-piece members need moves any boss. So on this account the VV
+  flower is not worth farming. The whole plan, scan included, takes about 2 s on 157
+  candidates.
+- **Open**: the list counts the floor only, like Hardest to lose. A piece that lifts the
+  second-weakest boss to a clear would not be listed; comparing the full leximin plan per slot
+  catches it at about three times the solves (84 s for 44 slots in Node). Worth doing only if
+  an export shows such a piece.
+
 ## 2. Re-run more than one assignment (optional)
 
 A re-run optimizes only the screen's top set assignment by account estimate. The same team

@@ -274,5 +274,21 @@ describe("planStygianRun", () => {
       b: "b2",
       c: "c1",
     });
+    // One more of a single slot cannot help: all four run short.
+    expect(scarce.missingPieces).toEqual([]);
+    expect(plenty.missingPieces).toEqual([]);
+
+    // Only the flower runs short: one more lets both supports wear the set.
+    const oneFlower = planStygianRun(
+      {
+        ...request(lineup),
+        setSlotCounts: { ...counts(2), [`${TENACITY}:flower`]: 1 },
+      },
+      solve
+    );
+    expect(oneFlower.plans[0].weakest).toBeCloseTo(1.1, 10);
+    expect(oneFlower.missingPieces).toEqual([
+      { setKey: TENACITY, slot: "flower", owned: 1, marginWith: 1.3 },
+    ]);
   });
 });

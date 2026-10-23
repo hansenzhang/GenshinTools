@@ -46,6 +46,7 @@ import type {
   LineupRunProgress,
   LineupSolverRequest,
   LineupSolverTeam,
+  MissingPiece,
 } from "@/domain/team/lineupSolverTypes";
 import type { EncounterMode } from "@/domain/team/lineupTypes";
 import { normalizeTeamSetupConfig } from "@/domain/team/teamDeltas";
@@ -1039,6 +1040,46 @@ export function BindingList({
           )}
         </span>
       )}
+    </div>
+  );
+}
+
+/** Pieces that would lift the weakest margin past the tie: a set and slot
+ *  that members taking any pieces of the set need, with the best weakest
+ *  margin given one more. */
+export function MissingPieceList({
+  items,
+}: {
+  items: readonly MissingPiece[];
+}) {
+  const { t } = useLanguage();
+  if (items.length === 0) return null;
+  return (
+    <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 text-xs md:text-sm">
+      <span
+        className={LINEUP_LABEL_CLS}
+        title={t.ui("lineup.missingPiecesTip")}
+      >
+        {t.ui("lineup.missingPieces")}
+      </span>
+      {items.slice(0, BINDING_SHOWN).map((item) => {
+        const name = `${t.artifact(item.setKey)} · ${t.slot(item.slot)}`;
+        return (
+          <span
+            key={`${item.setKey}:${item.slot}`}
+            className="flex items-center gap-1"
+            title={t.format("lineup.missingPieceOwned", name, item.owned)}
+          >
+            <ItemIcon
+              artifactSetId={item.setKey}
+              slot={item.slot}
+              size="xs"
+              alt={name}
+            />
+            <MarginValue margin={item.marginWith} />
+          </span>
+        );
+      })}
     </div>
   );
 }

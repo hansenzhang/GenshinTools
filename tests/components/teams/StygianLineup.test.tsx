@@ -260,6 +260,14 @@ describe("StygianLineup", () => {
       ],
       missingEncounterIds: [],
       binding: [{ kind: "character", id: "diluc", marginWithout: null }],
+      missingPieces: [
+        {
+          setKey: "viridescent_venerer",
+          slot: "flower",
+          owned: 1,
+          marginWith: 0.95,
+        },
+      ],
     };
     mocks.plan = { result: plan, error: null, isSolving: false };
     render(<StygianLineup />);
@@ -270,6 +278,12 @@ describe("StygianLineup", () => {
     // 1 / 0.733 − 1 ≈ 36%
     expect(screen.getByText("Needs +36% damage")).toBeInTheDocument();
     expect(screen.queryByText("Hardest to lose")).not.toBeInTheDocument();
+    // Missing pieces belong to the run, so they show under either plan.
+    expect(screen.getByText("One more piece")).toBeInTheDocument();
+    expect(screen.getByText("×0.95")).toBeInTheDocument();
+    expect(
+      screen.getByTitle("Viridescent Venerer · Flower: 1 owned")
+    ).toBeInTheDocument();
 
     await user.click(
       screen.getByRole("button", { name: /Strongest weakest boss/ })
@@ -294,6 +308,7 @@ describe("StygianLineup", () => {
         ],
         missingEncounterIds: [],
         binding: [],
+        missingPieces: [],
       },
       error: null,
       isSolving: false,
@@ -406,6 +421,7 @@ describe("StygianLineup", () => {
         ],
         missingEncounterIds: [],
         binding: [],
+        missingPieces: [],
       },
       error: null,
       isSolving: false,
@@ -443,6 +459,7 @@ describe("StygianLineup", () => {
         ],
         missingEncounterIds: [],
         binding: [],
+        missingPieces: [],
       },
       error: null,
       isSolving: false,
@@ -542,6 +559,7 @@ describe("StygianLineup", () => {
       ],
       missingEncounterIds: [],
       binding: [],
+      missingPieces: [],
     };
     mocks.plan = { result: plan, error: null, isSolving: false };
     const data = await exportDebugFile();
@@ -586,6 +604,7 @@ describe("StygianLineup", () => {
         ],
         missingEncounterIds: [],
         binding: [],
+        missingPieces: [],
       },
       error: null,
       isSolving: false,

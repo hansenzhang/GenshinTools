@@ -9,21 +9,28 @@
  * linear with one free t and a d_b ≥ t − y_b per boss. A held level may give
  * up its tie tolerance, but never drops a clearing lineup below 1.
  *
+ * Missing pieces re-solve the weakest margin with one more piece of each set
+ * and slot that members taking any pieces need, since any piece of it will
+ * do; those that lift it past the tie are listed.
+ *
  * When no lineup clears every boss, a plan minimizing the total shortfall
  * Σ max(0, 1 − y_b) leads, before the leximin one: a clear needs every gap
  * closed, and that plan leaves the least to close (docs/design/
  * lineup-solver.md, "Least shortfall first").
  */
 
+import type { Slot } from "@/domain/enums";
 import type {
   BindingItem,
   CalibratedCandidate,
+  MissingPiece,
   StygianPlan,
   StygianPlanKind,
   StygianPlanRequest,
   StygianPlanResult,
 } from "@/domain/team/lineupSolverTypes";
 import {
+  anyPieceSetSlots,
   candidateArtifactIds,
   candidateSetSlotUses,
   candidateWeaponUses,
@@ -277,6 +284,41 @@ function leastShortfall(
     : null;
 }
 
+/** Set slots whose one more piece lifts the best weakest margin past the
+ *  tie, with the margin reached. */
+function findMissingPieces(
+  encounterIds: readonly string[],
+  request: StygianPlanRequest,
+  top: number,
+  solve: MilpSolver
+): MissingPiece[] {
+  const counts = request.setSlotCounts;
+  if (!counts) return [];
+  const keys = new Set(request.candidates.flatMap(anyPieceSetSlots));
+  return [...keys]
+    .flatMap((key): MissingPiece[] => {
+      const run = buildRunModel(
+        encounterIds,
+        request.candidates,
+        request.weaponCopies,
+        { ...counts, [key]: (counts[key] ?? 0) + 1 }
+      );
+      const reached = run && maxMin(run, solve);
+      if (reached == null || reached <= top * (1 + request.tiePercent / 100))
+        return [];
+      const [setKey, slot] = key.split(":");
+      return [
+        {
+          setKey,
+          slot: slot as Slot,
+          owned: counts[key] ?? 0,
+          marginWith: reached,
+        },
+      ];
+    })
+    .sort((a, b) => b.marginWith - a.marginWith);
+}
+
 const samePlan = (a: StygianPlan, b: StygianPlan) =>
   Object.entries(a.candidateIds).every(
     ([encounterId, id]) => b.candidateIds[encounterId] === id
@@ -292,7 +334,12 @@ export function planStygianRun(
   const missingEncounterIds = request.encounterIds.filter(
     (id) => !encounterIds.includes(id)
   );
-  const empty = { plans: [], missingEncounterIds, binding: [] };
+  const empty = {
+    plans: [],
+    missingEncounterIds,
+    binding: [],
+    missingPieces: [],
+  };
   const run = buildRunModel(
     encounterIds,
     request.candidates,
@@ -324,5 +371,11 @@ export function planStygianRun(
       return without && maxMin(without, solve);
     }
   );
-  return { plans, missingEncounterIds, binding };
+  const missingPieces = findMissingPieces(
+    encounterIds,
+    request,
+    best.maxMin,
+    solve
+  );
+  return { plans, missingEncounterIds, binding, missingPieces };
 }

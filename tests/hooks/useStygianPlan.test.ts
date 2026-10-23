@@ -45,6 +45,7 @@ const result = (weakest: number): StygianPlanResult => ({
   plans: [{ kind: "leximin", candidateIds: {}, weakest }],
   missingEncounterIds: [],
   binding: [],
+  missingPieces: [],
 });
 
 describe("useStygianPlan", () => {
