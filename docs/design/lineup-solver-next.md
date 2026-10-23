@@ -61,16 +61,25 @@ the MILP enforces.
   (`candidateArtifactIds` leaves out members that take any pieces of their set), and `keepClear`
   re-checks only weapon copies afterwards. So a cleared re-run can still overuse a set's slots
   (`setSlotCounts`), for example several Instructor "any pieces" wearers on a few circlets.
-- **Evidence**: replay of 18:52 with `--dump` (running at the time of writing); check the chain's
-  three candidates with `canFieldTogether` and `findContestedGear` including set slots.
+- **Evidence (confirmed 2026-10-23)**: replay of 18:52 with `--dump`. The chain's three
+  candidates (104 Sandrone, 150 Faruzan, 151 Lunar-Stellar) share no piece, character or weapon
+  copy, and `canFieldTogether` passes without set slots but fails with them: the account has one
+  Viridescent Venerer flower, Faruzan takes any VV pieces in candidate 150, and Lunar-Stellar's
+  re-run (151, cleared of 104 and 150's exact pieces) gives its VV wearer that flower
+  (`viridescent_venerer:flower` 2 > 1). So ×0.707 was not a real lineup.
+- **Fix to make**: when a re-run is cleared of another team, also exclude every piece of a set
+  slot whose remaining count would not cover that team's any-pieces members; and after any
+  re-run or swap, re-check pieces and set slots, not only weapon copies, returning no candidate
+  (chain incomplete) if it still collides.
 - **Acceptance**:
   - A chain records a lineup only if its candidates fit together under the same limits as the
     MILP (pieces, weapon copies, set slots); otherwise it reports the chain incomplete.
   - Where possible the re-run leaves the other teams' set-slot needs free instead of failing.
   - A test where two members take any pieces of one set with too few slots for both.
   - Replay of 18:52: the joint floor is at least the weakest-first floor, both recorded here.
-- **Payoff**: if the swapped assignment fits once cleared, 18:52's floor could rise from ×0.584
-  towards ×0.7 (+21%), the largest gain left.
+- **Payoff**: likely. The swapped lineup's floor is Faruzan's ×0.707 unless Lunar-Stellar,
+  re-run without that flower, falls below it; it has ×1.031 with the flower. Anything above
+  ×0.584 beats today's plan (+21% at ×0.707).
 
 ## 2. Re-run more than one assignment (optional)
 
