@@ -361,6 +361,7 @@ class NoblesseOblige4pc extends ArtifactSetBase {
         triggers: ["Q"],
         noStackId: "noblesse-oblige-atk",
         duration: 12,
+        castTrigger: true,
       },
       { receiver: "team" },
       [{ key: "atk%", value: 0.2 }]
@@ -1459,6 +1460,7 @@ class CelestialGift4pc extends ArtifactSetBase {
           triggers: ["E"],
           noStackId: `${this.artifactSetId}-${wielderElement}`,
           duration: 20,
+          castTrigger: true,
         },
         { receiver: "team", filter: { elements: [wielderElement] } },
         [{ key: "dmg%", value }]
@@ -1481,6 +1483,7 @@ class CelestialGift4pc extends ArtifactSetBase {
               triggers: ["E"],
               noStackId: `${this.artifactSetId}-${elem}`,
               duration: 20,
+              castTrigger: true,
             },
             { receiver, filter: { elements: [elem] } },
             [{ key: "dmg%", value: 0.4 }]

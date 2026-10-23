@@ -6,7 +6,10 @@ import {
 } from "@/domain/reference/stats";
 import "@/domain/combat/damage/index";
 import { buildBuffOverrides } from "@/domain/combat/damage/core/comboBuffOverrides";
-import { defaultSetUptime } from "@/domain/combat/damage/core/setUptime";
+import {
+  defaultSetUptime,
+  type TimedTrigger,
+} from "@/domain/combat/damage/core/setUptime";
 import { TeamBuild } from "@/domain/combat/damage/core/teamBuild";
 import type {
   CalcContext,
@@ -82,40 +85,75 @@ function damage(team: TeamBuild, settings?: SetUptimeSettings): number {
 
 describe("timed set uptime", () => {
   const team = new TeamBuild(TEAM);
-  const { formulaIndex } = team.catalog;
+  const uptime = (
+    trigger: TimedTrigger,
+    wearerId: string,
+    rotationSeconds: number | undefined,
+    build = team,
+    lines = COMBO.lines
+  ) =>
+    defaultSetUptime(
+      trigger,
+      wearerId,
+      Object.keys(build.catalog.getFormulaIds()[wearerId] ?? {}),
+      lines,
+      build.catalog.formulaIndex,
+      rotationSeconds
+    );
+  const tenacity: TimedTrigger = { duration: 3, triggers: ["E"] };
+  const noblesse: TimedTrigger = {
+    duration: 12,
+    triggers: ["Q"],
+    castTrigger: true,
+  };
+  const instructor: TimedTrigger = { duration: 8, triggers: ["on-reaction"] };
 
   it("defaults to full uptime without a rotation length", () => {
-    expect(
-      defaultSetUptime(3, ["E"], "diona", COMBO.lines, formulaIndex, undefined)
-    ).toBe(1);
+    expect(uptime(tenacity, "diona", undefined)).toBe(1);
   });
 
   it("counts the wearer's casts of the triggering ability", () => {
-    // Diona casts E once: 3 s of an 18 s rotation.
-    expect(
-      defaultSetUptime(3, ["E"], "diona", COMBO.lines, formulaIndex, 18)
-    ).toBeCloseTo(3 / 18);
+    // Diona casts E once: 3 s of an 18 s rotation. Her off-field paws need
+    // Stellar-Conduct, so her kit has no off-field hit here.
+    expect(uptime(tenacity, "diona", 18)).toBeCloseTo(3 / 18);
     // Bennett's Burst deals no counted damage; he still casts it once.
-    expect(
-      defaultSetUptime(12, ["Q"], "bennett", COMBO.lines, formulaIndex, 18)
-    ).toBeCloseTo(12 / 18);
+    expect(uptime(noblesse, "bennett", 18)).toBeCloseTo(12 / 18);
     // Two E casts for an E-triggered effect.
-    expect(
-      defaultSetUptime(3, ["E"], "bennett", COMBO.lines, formulaIndex, 18)
-    ).toBeCloseTo(6 / 18);
+    expect(uptime(tenacity, "bennett", 18)).toBeCloseTo(6 / 18);
   });
 
-  it("keeps a driver's effects at full uptime", () => {
-    expect(
-      defaultSetUptime(
-        8,
-        ["on-reaction"],
-        "hu_tao",
-        COMBO.lines,
-        formulaIndex,
-        18
-      )
-    ).toBe(1);
+  it("counts a Burst once and Skill casts by its largest line", () => {
+    const lines = [
+      { charId: "bennett", formulaId: "bennett-burst", count: 2 },
+      { charId: "bennett", formulaId: "bennett-skill", count: 2 },
+      { charId: "diona", formulaId: "diona-skill", count: 1 },
+    ];
+    expect(uptime(noblesse, "bennett", 30, team, lines)).toBeCloseTo(12 / 30);
+    expect(uptime(tenacity, "bennett", 30, team, lines)).toBeCloseTo(6 / 30);
+  });
+
+  it("keeps a driver's hit-fired effects mostly up", () => {
+    expect(uptime(instructor, "hu_tao", 18)).toBe(0.8);
+    // Using a Burst fires Noblesse: driving does not refresh it.
+    expect(uptime(noblesse, "hu_tao", 18)).toBeCloseTo(12 / 18);
+  });
+
+  it("keeps an off-field hitter's effects mostly up, even off the rotation", () => {
+    // Layla has no line; her stars hit off-field as Skill DMG.
+    const withLayla = new TeamBuild([
+      TEAM[0],
+      {
+        charId: "layla",
+        charLevel: 90,
+        constellation: 0,
+        weaponId: "favonius_sword",
+        refinement: 1,
+        artifactSet: { type: "4pc", setId: "tenacity_of_the_millelith" },
+      },
+    ]);
+    expect(uptime(tenacity, "layla", 18, withLayla)).toBe(0.8);
+    // Her Burst hits off-field too, but Noblesse fires once per cast.
+    expect(uptime(noblesse, "layla", 18, withLayla)).toBeCloseTo(12 / 18);
   });
 
   it("lists each worn timed set with its default and override", () => {

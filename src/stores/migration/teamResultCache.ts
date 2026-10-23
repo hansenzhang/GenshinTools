@@ -63,8 +63,9 @@ export function migrateTeamResultCacheStore(
   }
   if (version < 8) {
     // Timed set effects (Instructor, Noblesse, …) now count for their uptime
-    // over the rotation instead of every hit. v7 results were priced at full
-    // uptime and cannot be reconciled.
+    // over the rotation instead of every hit (continuous ones at 80%, cast-fired
+    // ones per cast). v7 results were priced at full uptime and cannot be
+    // reconciled.
     state.resultsByTeamId = {};
   }
   return state;

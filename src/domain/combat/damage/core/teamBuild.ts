@@ -1867,10 +1867,12 @@ export class TeamBuild {
     activeLines: ComboLine[],
     setUptimes?: SetUptimeSettings
   ): TimedSetEffect[] {
+    const formulaIds = this.catalog.getFormulaIds();
     return resolveTimedSetEffects(
       this.buffLedger.allBuffs,
       activeLines,
       this.catalog.formulaIndex,
+      (charId) => Object.keys(formulaIds[charId] ?? {}),
       setUptimes
     );
   }

@@ -1,6 +1,7 @@
 /**
  * Uptime of timed artifact set effects (see docs/design/lineup-solver.md,
- * "Decision: set uptime from rotation length").
+ * "Decision: set uptime from rotation length", and
+ * docs/design/lineup-solver-next.md, "Decision: continuous set uptime").
  *
  * A set effect with a `duration` is up a share of the rotation. The share is
  * the user's per-set override, or a default derived from the team's rotation
@@ -11,6 +12,7 @@
 import type {
   AbilityType,
   BuffActivationMap,
+  BuffSource,
   ComboLine,
   FormulaEntry,
   SetUptimeSettings,
@@ -44,35 +46,86 @@ function triggerAbilities(triggers: readonly string[] | undefined) {
   return new Set<AbilityType>([e ? "skill" : "burst"]);
 }
 
+/** Uptime of an effect its wearer keeps refreshing (an on-field driver, or a
+ *  member whose off-field hits fire it): short of full for the gaps between
+ *  refreshes and swaps. */
+const CONTINUOUS_UPTIME = 0.8;
+
+/** What a timed effect lasts and what fires it. */
+export type TimedTrigger = Pick<
+  BuffSource,
+  "duration" | "triggers" | "castTrigger"
+> & { duration: number };
+
+/** The wearer drives: an on-field Normal, Charged or Plunge line. */
+function drivesOnField(
+  wearerId: string,
+  lines: readonly ComboLine[],
+  formulaIndex: ReadonlyMap<string, FormulaEntry>
+): boolean {
+  return lines.some(
+    (line) =>
+      line.charId === wearerId &&
+      line.count > 0 &&
+      formulaIndex
+        .get(line.formulaId)
+        ?.parts.some(
+          (part) =>
+            DRIVER_ABILITIES.has(part.formula.tag.ability) &&
+            !isPartOffField(part, line.forceOnField)
+        )
+  );
+}
+
+/** The wearer's kit hits off-field with an ability that fires the trigger,
+ *  whether or not the rotation lists that damage (Layla's stars). */
+function hitsOffField(
+  wearerFormulaIds: Iterable<string>,
+  counted: ReadonlySet<AbilityType>,
+  formulaIndex: ReadonlyMap<string, FormulaEntry>
+): boolean {
+  for (const formulaId of wearerFormulaIds) {
+    const parts = formulaIndex.get(formulaId)?.parts ?? [];
+    if (parts.some((p) => p.offField && counted.has(p.formula.tag.ability)))
+      return true;
+  }
+  return false;
+}
+
 /**
- * Default uptime of a timed effect: 100% without a rotation length, or when
- * the wearer drives (on-field Normal/Charged/Plunge lines) or applies
- * off-field (refreshing throughout); otherwise casts · duration ÷ rotation,
- * with at least one cast per rotation.
+ * Default uptime of a timed effect: 100% without a rotation length. A
+ * hit-fired effect whose wearer drives or hits off-field is up
+ * `CONTINUOUS_UPTIME`. Otherwise, and always for a cast-fired effect,
+ * casts · duration ÷ rotation, with at least one cast per rotation.
  */
 export function defaultSetUptime(
-  duration: number,
-  triggers: readonly string[] | undefined,
+  trigger: TimedTrigger,
   wearerId: string,
+  wearerFormulaIds: Iterable<string>,
   lines: readonly ComboLine[],
   formulaIndex: ReadonlyMap<string, FormulaEntry>,
   rotationSeconds: number | undefined
 ): number {
   if (rotationSeconds == null || rotationSeconds <= 0) return 1;
-  const counted = triggerAbilities(triggers);
-  let casts = 0;
+  const counted = triggerAbilities(trigger.triggers);
+  if (
+    !trigger.castTrigger &&
+    (drivesOnField(wearerId, lines, formulaIndex) ||
+      hitsOffField(wearerFormulaIds, counted, formulaIndex))
+  )
+    return CONTINUOUS_UPTIME;
+  // Lines count hits, not casts: a Burst's field and summon are two lines of
+  // one cast, and an initial hit plus its follow-ups share a Skill cast. So a
+  // Burst is one cast a rotation and Skill casts are its largest line count.
+  let casts = 1;
   for (const line of lines) {
     if (line.charId !== wearerId || line.count <= 0) continue;
-    const entry = formulaIndex.get(line.formulaId);
-    if (!entry) continue;
-    for (const part of entry.parts) {
-      if (isPartOffField(part, line.forceOnField)) return 1;
-      if (DRIVER_ABILITIES.has(part.formula.tag.ability)) return 1;
-    }
-    const ability = entry.parts[0]?.formula.tag.ability;
-    if (ability && counted.has(ability)) casts += line.count;
+    const ability = formulaIndex.get(line.formulaId)?.parts[0]?.formula.tag
+      .ability;
+    if (ability === "skill" && counted.has(ability))
+      casts = Math.max(casts, line.count);
   }
-  return Math.min(1, (Math.max(1, casts) * duration) / rotationSeconds);
+  return Math.min(1, (casts * trigger.duration) / rotationSeconds);
 }
 
 /** Timed set effects worn in the team, one per set and wearer. */
@@ -80,18 +133,19 @@ export function resolveTimedSetEffects(
   buffs: readonly IndexedBuff[],
   lines: readonly ComboLine[],
   formulaIndex: ReadonlyMap<string, FormulaEntry>,
+  formulaIdsOf: (charId: string) => Iterable<string>,
   settings: SetUptimeSettings | undefined
 ): TimedSetEffect[] {
   const effects = new Map<string, TimedSetEffect>();
   for (const { buff, providerCharId } of buffs) {
-    const { type, id, duration, triggers } = buff.source;
+    const { type, id, duration } = buff.source;
     if (type !== "artifactSet" || duration == null) continue;
     const key = `${id}\0${providerCharId}`;
     if (effects.has(key)) continue;
     const defaultUptime = defaultSetUptime(
-      duration,
-      triggers,
+      { ...buff.source, duration },
       providerCharId,
+      formulaIdsOf(providerCharId),
       lines,
       formulaIndex,
       settings?.rotationSeconds

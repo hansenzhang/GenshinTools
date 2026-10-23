@@ -21,6 +21,35 @@ here, so that document stops growing.
   ×0.54–0.78 (30–85% short); the best lineup moves the floor by 5–20%. Levelling advice for the
   short team and better gear matter more than more solver work.
 
+## Decision: continuous set uptime (2026-10-23)
+
+The question: every team in the 06:05 export wears Instructor. The cause was the default uptime
+of `core/setUptime.ts` combined with the hand-entered shares. Rebuilt from that export:
+Instructor on Sucrose, Diona and Ineffa took the default, 100%, because each has an off-field
+line. Instructor has no hand share in any team, while its rivals had one: Tenacity on Diona and
+Noblesse on Alyosha at 0.5, and VV on Sucrose at 0.6. Two flaws in the default made it worse.
+Layla, who has no line in the Mizuki rotation, got 18% Tenacity although her stars hit off-field
+as Skill DMG. Noblesse on Alyosha got 100% because her Burst's two lines counted as two casts.
+
+The user accepted these rules:
+
+- **Continuous at 80%.** An effect fired by hits or reactions (Instructor, Tenacity, VV, Deepwood,
+  Silken Moon, Scroll, Petra) is up 80% when its wearer drives (an on-field Normal, Charged or
+  Plunge line) or has an off-field formula of a firing ability in their kit, whether or not the
+  rotation lists it. This assumes the holder has an off-field skill to fire it with: Layla, Cryo
+  Traveler, Columbina, Diona (with Stellar-Conduct), Ineffa, Linnea and Sucrose count; Faruzan
+  does not. 80% leaves room for gaps between refreshes and swaps.
+- **Cast-fired effects never take that shortcut.** `BuffSource.castTrigger` marks effects that
+  start when an ability is used, not when it hits: Noblesse (Burst) and Celestial Gift (Skill).
+- **Casts otherwise.** `casts · duration ÷ rotation`, where a Burst counts once a rotation and
+  Skill casts are the wearer's largest Skill line count. Lines count hits, so summing them
+  overstated casts.
+- **No hand shares.** The user drops their shares and lets the defaults price every set alike;
+  the replay below strips them from the export. Overrides stay available in the UI.
+- **Cache.** Priced numbers change, so cached results are cleared. The unpushed result-cache v8
+  bump already does that, so there is no second bump; a local copy already on v8 needs its results
+  recomputed once.
+
 ## 1. Chain lineups that do not fit (do first)
 
 On the 18:52 export the weakest-first chain reports a lineup with floor ×0.707 (Sandrone on

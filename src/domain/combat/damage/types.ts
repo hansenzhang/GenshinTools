@@ -70,6 +70,10 @@ export type BuffSource = {
   /** Seconds the effect lasts after its trigger. Set on timed artifact set
    *  effects, whose uptime is priced from the team's rotation length. */
   duration?: number;
+  /** The timed effect starts when the wearer uses the triggering ability
+   *  (Noblesse's Burst), not when it hits, so off-field hits never refresh
+   *  it. */
+  castTrigger?: boolean;
   /** Display-only element hint (e.g. for gleam resonance icon). */
   element?: Element;
 };
