@@ -112,24 +112,19 @@ describe("timed set uptime", () => {
     expect(uptime(tenacity, "diona", undefined)).toBe(1);
   });
 
-  it("counts the wearer's casts of the triggering ability", () => {
-    // Diona casts E once: 3 s of an 18 s rotation. Her off-field paws need
-    // Stellar-Conduct, so her kit has no off-field hit here.
+  it("gives anyone else one window a rotation", () => {
+    // Diona's off-field paws need Stellar-Conduct, so her kit has no
+    // off-field hit here: 3 s of an 18 s rotation.
     expect(uptime(tenacity, "diona", 18)).toBeCloseTo(3 / 18);
     // Bennett's Burst deals no counted damage; he still casts it once.
     expect(uptime(noblesse, "bennett", 18)).toBeCloseTo(12 / 18);
-    // Two E casts for an E-triggered effect.
-    expect(uptime(tenacity, "bennett", 18)).toBeCloseTo(6 / 18);
-  });
-
-  it("counts a Burst once and Skill casts by its largest line", () => {
+    // Two Skill lines are not two windows: a second swap is not assumed.
     const lines = [
       { charId: "bennett", formulaId: "bennett-burst", count: 2 },
       { charId: "bennett", formulaId: "bennett-skill", count: 2 },
-      { charId: "diona", formulaId: "diona-skill", count: 1 },
     ];
+    expect(uptime(tenacity, "bennett", 30, team, lines)).toBeCloseTo(3 / 30);
     expect(uptime(noblesse, "bennett", 30, team, lines)).toBeCloseTo(12 / 30);
-    expect(uptime(tenacity, "bennett", 30, team, lines)).toBeCloseTo(6 / 30);
   });
 
   it("keeps a driver's hit-fired effects mostly up", () => {
@@ -154,6 +149,22 @@ describe("timed set uptime", () => {
     expect(uptime(tenacity, "layla", 18, withLayla)).toBe(0.8);
     // Her Burst hits off-field too, but Noblesse fires once per cast.
     expect(uptime(noblesse, "layla", 18, withLayla)).toBeCloseTo(12 / 18);
+  });
+
+  it("gives an off-field Burst one window", () => {
+    // Sucrose's vortex hits off-field, but only her Skill swirls again.
+    const withSucrose = new TeamBuild([
+      TEAM[0],
+      {
+        charId: "sucrose",
+        charLevel: 90,
+        constellation: 0,
+        weaponId: "sacrificial_fragments",
+        refinement: 1,
+        artifactSet: { type: "4pc", setId: "instructor" },
+      },
+    ]);
+    expect(uptime(instructor, "sucrose", 18, withSucrose)).toBeCloseTo(8 / 18);
   });
 
   it("lists each worn timed set with its default and override", () => {

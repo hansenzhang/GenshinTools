@@ -35,15 +35,20 @@ The user accepted these rules:
 
 - **Continuous at 80%.** An effect fired by hits or reactions (Instructor, Tenacity, VV, Deepwood,
   Silken Moon, Scroll, Petra) is up 80% when its wearer drives (an on-field Normal, Charged or
-  Plunge line) or has an off-field formula of a firing ability in their kit, whether or not the
-  rotation lists it. This assumes the holder has an off-field skill to fire it with: Layla, Cryo
-  Traveler, Columbina, Diona (with Stellar-Conduct), Ineffa, Linnea and Sucrose count; Faruzan
-  does not. 80% leaves room for gaps between refreshes and swaps.
-- **Cast-fired effects never take that shortcut.** `BuffSource.castTrigger` marks effects that
-  start when an ability is used, not when it hits: Noblesse (Burst) and Celestial Gift (Skill).
-- **Casts otherwise.** `casts · duration ÷ rotation`, where a Burst counts once a rotation and
-  Skill casts are the wearer's largest Skill line count. Lines count hits, so summing them
-  overstated casts.
+  Plunge line) or has an off-field Skill formula in their kit, whether or not the rotation lists
+  it. This assumes the holder has an off-field skill to fire it with: Layla, Cryo Traveler,
+  Columbina, Diona (with Stellar-Conduct), Ineffa and Linnea count. 80% leaves room for gaps
+  between refreshes and swaps.
+- **An off-field Burst is one window, not continuous** (amended the same day). Sucrose's vortex
+  swirls off-field, but after it only her Skill fires VV or Instructor again, which takes a
+  double swap that lengthens the rotation and is not always worth it. Alyosha's field is the
+  same case.
+- **Cast-fired effects never take the continuous shortcut.** `BuffSource.castTrigger` marks
+  effects that start when an ability is used, not when it hits: Noblesse (Burst) and Celestial
+  Gift (Skill).
+- **One window otherwise:** `duration ÷ rotation`. Casts are not counted from lines. Lines count
+  hits (Alyosha's Burst has two, which priced Noblesse at 100%), and a support's second cast
+  assumes a second swap.
 - **No hand shares.** The user drops their shares and lets the defaults price every set alike;
   the replay below strips them from the export. Overrides stay available in the UI.
 - **Cache.** Priced numbers change, so cached results are cleared. The unpushed result-cache v8

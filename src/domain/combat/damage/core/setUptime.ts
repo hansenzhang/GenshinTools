@@ -77,16 +77,19 @@ function drivesOnField(
   );
 }
 
-/** The wearer's kit hits off-field with an ability that fires the trigger,
- *  whether or not the rotation lists that damage (Layla's stars). */
-function hitsOffField(
+/** The wearer's kit keeps hitting off-field with a Skill that fires the
+ *  trigger, whether or not the rotation lists that damage (Layla's stars).
+ *  An off-field Burst does not count: it fires the effect for one window,
+ *  and refreshing it means swapping back in (Sucrose). */
+function skillHitsOffField(
   wearerFormulaIds: Iterable<string>,
   counted: ReadonlySet<AbilityType>,
   formulaIndex: ReadonlyMap<string, FormulaEntry>
 ): boolean {
+  if (!counted.has("skill")) return false;
   for (const formulaId of wearerFormulaIds) {
     const parts = formulaIndex.get(formulaId)?.parts ?? [];
-    if (parts.some((p) => p.offField && counted.has(p.formula.tag.ability)))
+    if (parts.some((p) => p.offField && p.formula.tag.ability === "skill"))
       return true;
   }
   return false;
@@ -94,9 +97,10 @@ function hitsOffField(
 
 /**
  * Default uptime of a timed effect: 100% without a rotation length. A
- * hit-fired effect whose wearer drives or hits off-field is up
- * `CONTINUOUS_UPTIME`. Otherwise, and always for a cast-fired effect,
- * casts · duration ÷ rotation, with at least one cast per rotation.
+ * hit-fired effect whose wearer drives or keeps hitting off-field with a
+ * Skill is up `CONTINUOUS_UPTIME`. Otherwise, and always for a cast-fired
+ * effect, one window a rotation: duration ÷ rotation. A support may cast
+ * twice, but a second swap is not always worth it, so it is not assumed.
  */
 export function defaultSetUptime(
   trigger: TimedTrigger,
@@ -107,25 +111,17 @@ export function defaultSetUptime(
   rotationSeconds: number | undefined
 ): number {
   if (rotationSeconds == null || rotationSeconds <= 0) return 1;
-  const counted = triggerAbilities(trigger.triggers);
   if (
     !trigger.castTrigger &&
     (drivesOnField(wearerId, lines, formulaIndex) ||
-      hitsOffField(wearerFormulaIds, counted, formulaIndex))
+      skillHitsOffField(
+        wearerFormulaIds,
+        triggerAbilities(trigger.triggers),
+        formulaIndex
+      ))
   )
     return CONTINUOUS_UPTIME;
-  // Lines count hits, not casts: a Burst's field and summon are two lines of
-  // one cast, and an initial hit plus its follow-ups share a Skill cast. So a
-  // Burst is one cast a rotation and Skill casts are its largest line count.
-  let casts = 1;
-  for (const line of lines) {
-    if (line.charId !== wearerId || line.count <= 0) continue;
-    const ability = formulaIndex.get(line.formulaId)?.parts[0]?.formula.tag
-      .ability;
-    if (ability === "skill" && counted.has(ability))
-      casts = Math.max(casts, line.count);
-  }
-  return Math.min(1, (casts * trigger.duration) / rotationSeconds);
+  return Math.min(1, trigger.duration / rotationSeconds);
 }
 
 /** Timed set effects worn in the team, one per set and wearer. */
