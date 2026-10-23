@@ -242,20 +242,20 @@ describe("StygianLineup", () => {
     expect(screen.getByText("Solving…")).toBeInTheDocument();
   });
 
-  it("shows each boss's team, the shortfall and what is hardest to lose", async () => {
+  it("leads with the shortfall plan, and shows what is hardest to lose on the other", async () => {
     const user = userEvent.setup();
     seed();
     const plan: StygianPlanResult = {
       plans: [
         {
-          kind: "leximin",
-          candidateIds: { b1: "c1", b2: "c2", b3: "c3" },
-          weakest: 0.88,
-        },
-        {
           kind: "shortfall",
           candidateIds: { b1: "c1", b2: "c4", b3: "c3" },
           weakest: 0.733,
+        },
+        {
+          kind: "leximin",
+          candidateIds: { b1: "c1", b2: "c2", b3: "c3" },
+          weakest: 0.88,
         },
       ],
       missingEncounterIds: [],
@@ -263,20 +263,21 @@ describe("StygianLineup", () => {
     };
     mocks.plan = { result: plan, error: null, isSolving: false };
     render(<StygianLineup />);
-    expect(screen.getAllByText("Best lineup").length).toBe(2);
+    expect(screen.getAllByText("Smallest total shortfall").length).toBe(2);
     expect(screen.getByText("Weakest boss")).toBeInTheDocument();
     expect(screen.getByText("Hu Tao")).toBeInTheDocument();
     expect(screen.getByText("Diluc")).toBeInTheDocument();
+    // 1 / 0.733 − 1 ≈ 36%
+    expect(screen.getByText("Needs +36% damage")).toBeInTheDocument();
+    expect(screen.queryByText("Hardest to lose")).not.toBeInTheDocument();
+
+    await user.click(
+      screen.getByRole("button", { name: /Strongest weakest boss/ })
+    );
     // 1 / 0.88 − 1 ≈ 14%
     expect(screen.getByText("Needs +14% damage")).toBeInTheDocument();
     expect(screen.getByText("Hardest to lose")).toBeInTheDocument();
     expect(screen.getByText("No alternative")).toBeInTheDocument();
-
-    await user.click(
-      screen.getByRole("button", { name: /Smallest total shortfall/ })
-    );
-    expect(screen.getByText("Needs +36% damage")).toBeInTheDocument();
-    expect(screen.queryByText("Hardest to lose")).not.toBeInTheDocument();
   });
 
   it("advises what to level for every team, weakest first", () => {

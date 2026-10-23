@@ -28,8 +28,8 @@ import type {
 } from "@/domain/combat/damage/types";
 import { resolveCalcContext } from "@/domain/combat/damage/utils";
 import {
-  calibrateCandidates,
   candidateArtifactIds,
+  candidateStrength,
   candidateWeaponUses,
   countSetSlotPieces,
   findContestedGear,
@@ -1241,7 +1241,7 @@ function conflictingPairs(
  * One lineup for the whole group, built encounter by encounter in order of
  * each one's best strength: every pick is the strongest candidate sharing no
  * character with the earlier picks, kept clear of their gear. A pick also
- * leaves alone characters every candidate of a later encounter needs, when
+ * leaves the later encounters a candidate each with no character twice, when
  * it can. Returns the lineup, shorter than the group when a pick fails.
  */
 async function chainLineup(
@@ -1258,34 +1258,42 @@ async function chainLineup(
     );
   const strongest = (candidates: readonly LineupCandidate[]) =>
     [...candidates].sort((a, b) => strength(b) - strength(a))[0];
-  /** Characters in every candidate of the encounter. */
-  const required = (encounterId: string) => {
-    const [first, ...rest] = on(encounterId).map(
-      (candidate) => new Set(candidate.members.map((member) => member.charId))
-    );
-    return first
-      ? [...first].filter((charId) => rest.every((set) => set.has(charId)))
-      : [];
+  const charIds = (candidate: LineupCandidate) =>
+    candidate.members.map((member) => member.charId);
+  const best = (encounterId: string) => {
+    const candidate = strongest(on(encounterId));
+    return candidate ? strength(candidate) : 0;
   };
   const order = [...group].sort((a, b) => {
-    const gap =
-      (strongest(on(a.id)) ? strength(strongest(on(a.id))) : 0) -
-      (strongest(on(b.id)) ? strength(strongest(on(b.id))) : 0);
+    const gap = best(a.id) - best(b.id);
     return weakestFirst ? gap : -gap;
   });
+  /** Each encounter's distinct character sets, to search lineups over. */
+  const rosters = order.map((encounter) => [
+    ...new Map(
+      on(encounter.id).map((candidate) => {
+        const ids = charIds(candidate).sort();
+        return [ids.join(","), ids];
+      })
+    ).values(),
+  ]);
+  /** Whether the encounters from `index` on can each still field a
+   *  candidate with none of `taken` and no character twice. */
+  const completable = (index: number, taken: ReadonlySet<string>): boolean =>
+    index >= order.length ||
+    rosters[index].some(
+      (ids) =>
+        !ids.some((id) => taken.has(id)) &&
+        completable(index + 1, new Set([...taken, ...ids]))
+    );
   const pick = (index: number, taken: ReadonlySet<string>) => {
     const free = on(order[index].id).filter(
-      (candidate) =>
-        !candidate.members.some((member) => taken.has(member.charId))
-    );
-    const reserved = new Set(
-      order.slice(index + 1).flatMap((encounter) => required(encounter.id))
+      (candidate) => !charIds(candidate).some((id) => taken.has(id))
     );
     return (
       strongest(
-        free.filter(
-          (candidate) =>
-            !candidate.members.some((member) => reserved.has(member.charId))
+        free.filter((candidate) =>
+          completable(index + 1, new Set([...taken, ...charIds(candidate)]))
         )
       ) ?? strongest(free)
     );
@@ -1314,22 +1322,17 @@ async function chainLineup(
  * leading candidates that share pieces or weapon copies but no character are
  * fixed both ways, the most promising pairs first. A group of three or more
  * also gets two encounter-by-encounter lineups, weakest and strongest first,
- * so at least one full lineup fits together.
+ * so at least one full lineup fits together: weakest first gives the floor
+ * its best build, strongest first the others theirs.
  */
 async function diversify(
   state: SolverState,
   progress: (done: number, total: number) => void
 ): Promise<void> {
-  // Margins where the clears give one, so encounters compare; r otherwise.
-  const margins = new Map(
-    calibrateCandidates(
-      state.candidates,
-      state.request.calibrations,
-      state.request.encounters
-    ).map((candidate) => [candidate.id, candidate.margin])
+  const strength = candidateStrength(
+    state.request.calibrations,
+    state.request.encounters
   );
-  const strength = (candidate: LineupCandidate) =>
-    margins.get(candidate.id) ?? candidate.ratio;
   const groups = encounterGroups(state.request);
   const fixes = groups.map((group) =>
     conflictingPairs(state, group, strength)

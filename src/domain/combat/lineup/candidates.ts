@@ -264,6 +264,28 @@ export function calibrateCandidates(
 }
 
 /**
+ * How strong a candidate is, comparable across encounters: its margin where
+ * the clears give one, its damage ratio otherwise. Candidates found after
+ * the first call (re-runs) get their margin when first asked, so they rank
+ * on the same scale as the ones they compete with.
+ */
+export function candidateStrength(
+  calibrations: readonly Calibration[],
+  encounters: readonly Encounter[]
+): (candidate: LineupCandidate) => number {
+  const margins = new Map<string, number | null>();
+  return (candidate) => {
+    if (!margins.has(candidate.id))
+      margins.set(
+        candidate.id,
+        calibrateCandidates([candidate], calibrations, encounters)[0]?.margin ??
+          null
+      );
+    return margins.get(candidate.id) ?? candidate.ratio;
+  };
+}
+
+/**
  * Whether a margin counts as tied with a better one: within `tiePercent` of
  * it, and on the same side of 1, since clearing the bar is never a tie with
  * missing it.

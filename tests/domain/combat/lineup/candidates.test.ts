@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   candidateArtifactIds,
   candidateSetSlotUses,
+  candidateStrength,
   canFieldTogether,
   fillAnyPieces,
   findContestedGear,
@@ -9,6 +10,7 @@ import {
 import type { Slot } from "@/domain/enums";
 import type { ArtifactData } from "@/domain/models";
 import type { LineupCandidate } from "@/domain/team/lineupSolverTypes";
+import type { Calibration, Encounter } from "@/domain/team/lineupTypes";
 
 const SLOTS: Slot[] = ["flower", "plume", "sands", "goblet", "circlet"];
 const TENACITY = "tenacity_of_the_millelith";
@@ -138,5 +140,48 @@ describe("members that take any pieces", () => {
     expect(filled.circlet?.id).toBe("spare-circlet");
     const ids = SLOTS.map((slot) => filled[slot]?.id);
     expect(ids.some((id) => id?.startsWith("shared"))).toBe(false);
+  });
+});
+
+describe("candidateStrength", () => {
+  const encounter: Encounter = {
+    id: "boss",
+    mode: "stygian",
+    bossId: 1,
+    enemyLevel: 100,
+    res: {},
+    resPhases: [],
+    targets: "",
+    downtimeSeconds: 0,
+    timeBarSeconds: 120,
+  };
+  const calibration: Calibration = {
+    id: "clear",
+    templateId: "team",
+    encounterId: "boss",
+    reference: { capturedAt: 0, slots: [], artifactsByChar: {} },
+    measuredSeconds: 140,
+    downtimeSeconds: null,
+  };
+  const on = (id: string, templateId: string, ratio: number) => ({
+    ...candidate(id, "diluc", false),
+    templateId,
+    encounterId: "boss",
+    ratio,
+  });
+
+  it("ranks a re-run found later by its margin, not its ratio", () => {
+    const strength = candidateStrength([calibration], [encounter]);
+    expect(strength(on("searched", "team", 1.4))).toBeCloseTo(1.2, 10);
+    // A re-run arrives after the first comparisons: still a margin.
+    expect(strength(on("re-run", "team", 1.3))).toBeCloseTo(
+      (1.3 * 120) / 140,
+      10
+    );
+  });
+
+  it("falls back to the ratio where no clear gives a margin", () => {
+    const strength = candidateStrength([calibration], [encounter]);
+    expect(strength(on("uncalibrated", "other", 1.3))).toBe(1.3);
   });
 });

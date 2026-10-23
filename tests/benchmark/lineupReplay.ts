@@ -420,8 +420,12 @@ async function printDiversify(
     );
     const pool = calibrated.filter((entry) => !removed.has(entry.id));
     const planned = await plan(request, result, pool);
+    // The floor is what the passes are compared on: the leximin plan, which
+    // need not lead when a boss falls short.
     const best =
-      planned.mode === "stygian" ? planned.result?.plans[0] : undefined;
+      planned.mode === "stygian"
+        ? planned.result?.plans.find((entry) => entry.kind === "leximin")
+        : undefined;
     console.log(
       `  ${label} (${pool.length} candidates): ${best ? teams(Object.values(best.candidateIds)) : "no lineup"}`
     );

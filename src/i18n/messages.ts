@@ -2452,15 +2452,15 @@ export const i18nUiData = {
       zh: "记录一次幽境危战首领通关后才能搜索阵容",
     },
     weakestBoss: { en: "Weakest boss", zh: "最弱首领" },
-    planLeximin: { en: "Best lineup", zh: "最佳阵容" },
+    planLeximin: { en: "Strongest weakest boss", zh: "保底最高" },
     planLeximinTip: {
       en: "Lifts the weakest boss as high as it goes, then the next.",
       zh: "先尽量提高最弱首领的余量，再提高次弱的。",
     },
     planShortfall: { en: "Smallest total shortfall", zh: "总差距最小" },
     planShortfallTip: {
-      en: "No lineup clears every boss; this one falls short by the least in total.",
-      zh: "没有阵容能通关所有首领；该阵容的差距总和最小。",
+      en: "No lineup clears every boss; this one falls short by the least in total, so it leaves the least to close.",
+      zh: "没有阵容能通关所有首领；该阵容的差距总和最小，需要补的伤害最少。",
     },
     solvingRun: { en: "Solving…", zh: "求解中…" },
     planFailed: {

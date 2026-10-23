@@ -1128,3 +1128,51 @@ with its account, teams and clears, the candidates with margins, and the plan).
 - Tests: `tests/domain/combat/lineup/debugExport.test.ts` (round trip, not an export, version,
   v2 fill-ins); `StygianLineup.test.tsx` opens an exported run after the teams are deleted and
   shows the file's team names, closes it, and refuses a GOOD file. Not checked in a browser.
+
+## Chain ranking, weakest first, least shortfall first (2026-10-22/23)
+
+Decided with the user after the five P4 exports.
+
+- **Ranking bug.** Diversify ranked candidates by margins computed once, before the chains. A
+  re-run found on the way had none and fell back to its damage ratio, which runs on a higher
+  scale (×1.477 against margins near ×1.35 on the 12:16 export). Strongest first therefore
+  picked weakest first's Lunar re-run over a stronger searched build and copied weakest first's
+  lineup, so "joint without weakest-first" on 11:35 and 12:16 measured nothing.
+  `candidateStrength` (`domain/combat/lineup/candidates.ts`) now gives every candidate its margin
+  when first ranked.
+- **Dropping weakest first was tried and reverted.** With the ranking fixed and weakest first
+  removed, the user's 20:31 export (inputs identical to 12:16) fell from ×0.776 to ×0.665:
+  strongest first builds Lunar-Stellar (×1.351) and Sandrone first, and the floor team, Mizuki,
+  is re-run last without both teams' pieces. Weakest first is what gives the floor its best
+  build.
+- **Weakest first's failures were its character picks**, on 18:20 and 18:52 (see the P4
+  sections). A pick used to reserve only characters in *every* candidate of a later boss. Now
+  both chains pick the strongest candidate that leaves the later bosses a candidate each with no
+  character twice (a search over each boss's distinct rosters), and fall back to the strongest
+  free one. Gear is still cleared by the re-runs. On the exported candidates, before re-runs,
+  weakest first now completes on all three exports: 18:20 Lunar flex ×0.607 (Linnea, Cryo
+  Traveler), Mizuki ×0.731, Sandrone ×1.402; 18:52 Sandrone on 10123 ×1.222, Faruzan ×0.747,
+  Lunar-Stellar on 10121 ×1.047, a team-to-boss assignment no pass tried before.
+- **Least shortfall leads when a boss falls short.** A clear needs every gap closed, and on 18:20
+  and 18:52 the least-shortfall plan left one team short where leximin left two. Leximin stays
+  the only plan when it clears every boss, and is listed second otherwise; Hardest to lose still
+  belongs to it. The leximin plan is labelled "Strongest weakest boss" (保底最高), since it is no
+  longer always the lineup shown first. The user's 05:09 export (the 18:52 setup) shows it:
+  least shortfall ×0.542 first, leximin ×0.584 second.
+
+### Measured (2026-10-23)
+
+Node replays with each export's own time budget (`lineupReplay.ts --diversify`), and the user's
+browser run 06:05 (inputs identical to 12:16):
+
+| Export | Weakest first | Strongest first | Joint leximin | Leads |
+|---|---|---|---|---|
+| 12:16 (and browser 06:05) | ×0.776 | ×0.665 | ×0.776 | leximin (no shortfall plan) |
+| 18:20 | ×0.607 (was incomplete) | ×0.513 | ×0.607 (was ×0.542) | least shortfall ×0.513 |
+| 18:52 | ×0.707 (was incomplete), Sandrone on 10123, Lunar-Stellar on 10121 | ×0.513 | ×0.584 | least shortfall ×0.542 |
+
+- 12:16: the replay matches the browser run exactly. Without weakest first the floor is ×0.665.
+- 18:20: +12% on the floor, all from the weakest-first chain (without it, ×0.542).
+- 18:52: the weakest-first lineup reaches ×0.707, but the joint plan stays at ×0.584, which
+  leximin could not do if that lineup fit within the MILP's limits. The chain and the MILP
+  disagree on some piece, set slot or weapon copy; being traced (replay with `--dump`).

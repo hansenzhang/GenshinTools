@@ -9,8 +9,10 @@
  * linear with one free t and a d_b ≥ t − y_b per boss. A held level may give
  * up its tie tolerance, but never drops a clearing lineup below 1.
  *
- * When no lineup clears every boss, a second plan minimizes the total
- * shortfall Σ max(0, 1 − y_b).
+ * When no lineup clears every boss, a plan minimizing the total shortfall
+ * Σ max(0, 1 − y_b) leads, before the leximin one: a clear needs every gap
+ * closed, and that plan leaves the least to close (docs/design/
+ * lineup-solver.md, "Least shortfall first").
  */
 
 import type {
@@ -300,11 +302,12 @@ export function planStygianRun(
   if (!run || encounterIds.length === 0) return empty;
   const best = leximin(run, request.tiePercent, solve);
   if (!best) return empty;
-  const plans = [toPlan("leximin", best.chosen)];
-  if (plans[0].weakest < 1) {
+  const lifted = toPlan("leximin", best.chosen);
+  const plans = [lifted];
+  if (lifted.weakest < 1) {
     const shortfall = leastShortfall(run, solve);
     const plan = shortfall && toPlan("shortfall", shortfall);
-    if (plan && !samePlan(plan, plans[0])) plans.push(plan);
+    if (plan && !samePlan(plan, lifted)) plans.unshift(plan);
   }
   const binding: BindingItem[] = findBindingItems(
     best.chosen,

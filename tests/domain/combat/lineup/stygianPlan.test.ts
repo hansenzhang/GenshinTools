@@ -136,7 +136,7 @@ describe("planStygianRun", () => {
     expect(result.plans[0].candidateIds).toEqual({ a: "a1", b: "b1", c: "c1" });
   });
 
-  it("adds the smallest total shortfall when no lineup clears", () => {
+  it("leads with the smallest total shortfall when no lineup clears", () => {
     const result = planStygianRun(
       request([
         candidate("a1", "a", 1.2, ["bennett"]),
@@ -148,16 +148,16 @@ describe("planStygianRun", () => {
       solve
     );
     expect(result.plans).toEqual([
-      {
-        kind: "leximin",
-        candidateIds: { a: "a2", b: "b1", c: "c1" },
-        weakest: 0.7,
-      },
       // Short by 0.5 in total instead of 0.3 + 0.3.
       {
         kind: "shortfall",
         candidateIds: { a: "a1", b: "b2", c: "c1" },
         weakest: 0.5,
+      },
+      {
+        kind: "leximin",
+        candidateIds: { a: "a2", b: "b1", c: "c1" },
+        weakest: 0.7,
       },
     ]);
   });

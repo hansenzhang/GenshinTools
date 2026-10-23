@@ -56,7 +56,10 @@ export function StygianLineup() {
     [result, encounters, calibrated]
   );
   const planState = useStygianPlan(planRequest);
-  const [selectedKind, setSelectedKind] = useState<StygianPlanKind>("leximin");
+  // The plan picked from the list; the first plan until then.
+  const [selectedKind, setSelectedKind] = useState<StygianPlanKind | null>(
+    null
+  );
   const issuesFor = useIssueLines(job, names);
 
   if (encounters.length === 0) return null;
