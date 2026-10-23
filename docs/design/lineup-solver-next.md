@@ -111,6 +111,50 @@ the MILP enforces.
   re-run without that flower, falls below it; it has ×1.031 with the flower. Anything above
   ×0.584 beats today's plan (+21% at ×0.707).
 
+### As built (2026-10-23)
+
+- `reservedSetSlotPieces` (`domain/combat/lineup/candidates.ts`): a re-run cleared of another
+  team also leaves every piece of a set slot whose remaining count would not cover that team's
+  members that take any pieces.
+- `keepClear` re-checks pieces and set slots, not only weapon copies, after a re-run or swap, and
+  returns no candidate if one still collides (the chain then stops short).
+- Tests: `tests/domain/combat/lineup/candidates.test.ts` (a slot with a spare piece stays usable;
+  the last pieces go to the other team; exact builds reserve nothing).
+- Replays with each export's budget (`--diversify --dump`; margins are priced with 9ecb7e73's
+  set uptimes, so they differ from earlier tables by a few percent). Every chain lineup now fits
+  under the MILP's limits, and the joint floor equals the best chain's:
+
+  | Export | Weakest first | Strongest first | Joint leximin | Before the fix |
+  |---|---|---|---|---|
+  | 18:52 | ×0.711 | ×0.531 | ×0.711 | ×0.584 (chain ×0.707 did not fit) |
+  | 18:20 | ×0.610 | ×0.531 | ×0.610 (least shortfall ×0.531 leads) | ×0.607 |
+  | 12:16 | ×0.796 | ×0.741 | ×0.796 | ×0.776 |
+
+  On 18:52 the lineup is Sandrone on 10123 ×1.217, Stellar Swirl Faruzan ×0.711, Lunar-Stellar
+  on 10121 ×0.974 (re-run without the VV flower). Without weakest first the floor is ×0.584.
+  Run time: 3,967 s, 2,455 s and 2,210 s in Node, three in parallel.
+
+## 1b. Say which missing pieces would raise the floor
+
+Asked by the user (2026-10-23): when a lineup is blocked by a set slot, say so, since a piece a
+member takes "any pieces" of only needs the right set and slot (a strongbox piece will do).
+
+- **Why the plan cannot tell today**: a "+1 piece per set slot" re-plan over the 18:52 export's
+  candidates (78 slots, 56 s) raises the floor for none. The build that needed a second VV
+  flower was a re-run that item 1's fix now steers around the scarce slot, so no candidate
+  records what one more piece would unlock.
+- **Change**:
+  - When a re-run collides with the other team only on set slots, keep it as a candidate (the
+    plan cannot field it with today's counts), then re-run once more with the slot reserved, as
+    item 1 does. One extra re-run, only in that case.
+  - After a run, re-plan with one more piece in each set slot that a member taking any pieces
+    needs, and list the slots that raise the weakest boss: "1 more Viridescent Venerer flower
+    (any stats): weakest boss ×0.584 → ×0.707". Beside Hardest to lose, which removes items.
+  - Slots only exact builds need are left out: a new piece would need the same stats.
+- **Acceptance**: on the 18:52 setup the list names the VV flower with the floor it unlocks; the
+  re-plans' time is measured and stated; a test where one more piece of a slot lets two any-piece
+  members fit.
+
 ## 2. Re-run more than one assignment (optional)
 
 A re-run optimizes only the screen's top set assignment by account estimate. The same team
@@ -143,7 +187,7 @@ ratio between two builds agrees with GO's within a stated tolerance, or the gap 
 
 ## Stop condition
 
-After item 1 (and item 2 only if its noise changes picks), stop the multi-team solver work and
+After items 1 and 1b (and item 2 only if its noise changes picks), stop the multi-team solver work and
 leave it to the levelling advisor (P5) and the user's gear. Out of scope unless a measurement
 asks for it: joint search beyond selecting found candidates, price-based column generation,
 LP-fitted bounds, and keeping run history across reloads (the viewer covers exported runs).

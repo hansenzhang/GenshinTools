@@ -6,6 +6,7 @@ import {
   canFieldTogether,
   fillAnyPieces,
   findContestedGear,
+  reservedSetSlotPieces,
 } from "@/domain/combat/lineup/candidates";
 import type { Slot } from "@/domain/enums";
 import type { ArtifactData } from "@/domain/models";
@@ -183,5 +184,40 @@ describe("candidateStrength", () => {
   it("falls back to the ratio where no clear gives a margin", () => {
     const strength = candidateStrength([calibration], [encounter]);
     expect(strength(on("uncalibrated", "other", 1.3))).toBe(1.3);
+  });
+});
+
+describe("reservedSetSlotPieces", () => {
+  // The other team's member takes any Tenacity pieces: it needs a flower,
+  // plume, sands and goblet of the set.
+  const other = candidate("other", "bennett", true);
+  const spareFlower = piece("spare-flower", TENACITY, "flower");
+  const artifacts = [...Object.values(wornPieces("other")), spareFlower];
+  const counts = {
+    [`${TENACITY}:flower`]: 2,
+    [`${TENACITY}:plume`]: 1,
+    [`${TENACITY}:sands`]: 1,
+    [`${TENACITY}:goblet`]: 1,
+    "gladiators_finale:circlet": 1,
+  };
+
+  it("leaves the last pieces of a slot to members that take any pieces", () => {
+    // Two flowers for one taker: a re-run may still use one.
+    expect(reservedSetSlotPieces(other, artifacts, counts).sort()).toEqual([
+      "other-goblet",
+      "other-plume",
+      "other-sands",
+    ]);
+  });
+
+  it("does not reserve slots the other team fills with exact pieces", () => {
+    const exact = candidate("exact", "bennett", false);
+    expect(
+      reservedSetSlotPieces(
+        exact,
+        [...Object.values(wornPieces("exact")), spareFlower],
+        counts
+      )
+    ).toEqual([]);
   });
 });

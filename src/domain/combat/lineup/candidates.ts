@@ -88,6 +88,42 @@ export function candidateSetSlotUses(
 }
 
 /**
+ * Pieces a re-run kept clear of `other` must leave alone besides `other`'s
+ * own: every piece of a set and slot where, after `other`'s pieces, no more
+ * are owned than its members that take any pieces still need there.
+ */
+export function reservedSetSlotPieces(
+  other: LineupCandidate,
+  artifacts: readonly ArtifactData[],
+  setSlotCounts: Readonly<Record<string, number>>
+): string[] {
+  const demand: Record<string, number> = {};
+  for (const member of other.members)
+    if (member.anyPieces)
+      for (const key of anyPieceSlots(member))
+        demand[key] = (demand[key] ?? 0) + 1;
+  const taken = new Set(candidateArtifactIds(other));
+  const takenPerKey: Record<string, number> = {};
+  for (const artifact of artifacts)
+    if (taken.has(artifact.id)) {
+      const key = setSlotKey(artifact.setKey, artifact.slotKey);
+      takenPerKey[key] = (takenPerKey[key] ?? 0) + 1;
+    }
+  const full = new Set(
+    Object.keys(demand).filter(
+      (key) =>
+        (setSlotCounts[key] ?? 0) - (takenPerKey[key] ?? 0) - demand[key] < 1
+    )
+  );
+  return artifacts.flatMap((artifact) =>
+    !taken.has(artifact.id) &&
+    full.has(setSlotKey(artifact.setKey, artifact.slotKey))
+      ? [artifact.id]
+      : []
+  );
+}
+
+/**
  * The lineup with concrete pieces for members that take any pieces of their
  * set: the ones they were scored with while nobody else in the lineup needs
  * them, otherwise the lowest-level free piece of the same set and slot.

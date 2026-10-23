@@ -33,6 +33,7 @@ import {
   candidateWeaponUses,
   countSetSlotPieces,
   findContestedGear,
+  reservedSetSlotPieces,
 } from "@/domain/combat/lineup/candidates";
 import {
   compositionObjective,
@@ -1162,9 +1163,11 @@ function combined(candidates: readonly LineupCandidate[]): LineupCandidate {
 }
 
 /**
- * The candidate kept clear of `other`'s pieces (re-run) and of the weapon
- * copies it needs (swapped). Null when a clear version cannot be found.
- * Candidates the re-run and swap give are added to `found`.
+ * The candidate kept clear of `other`'s pieces and the set slots its members
+ * that take any pieces need (re-run), and of the weapon copies it needs
+ * (swapped). Null when no version found fits beside `other` under the
+ * lineup plan's limits. Candidates the re-run and swap give are added to
+ * `found`.
  */
 async function keepClear(
   state: SolverState,
@@ -1182,9 +1185,17 @@ async function keepClear(
     state.setSlotCounts
   );
   // Set slots run short when a member that takes any pieces was scored with
-  // the other's pieces: the re-run leaves those for the other.
+  // the other's pieces, or the other's members that take any pieces need the
+  // slot's last ones: the re-run leaves those for the other.
   if (contested.artifactIds.length > 0 || contested.setSlotKeys.length > 0) {
-    const excluded = candidateArtifactIds(other);
+    const excluded = [
+      ...candidateArtifactIds(other),
+      ...reservedSetSlotPieces(
+        other,
+        getAllArtifacts(state.request.accountData),
+        state.setSlotCounts
+      ),
+    ];
     const key = `${candidate.id}|${[...excluded].sort().join(",")}`;
     if (!state.reruns.has(key))
       state.reruns.set(key, await rerunWithout(state, source, excluded));
@@ -1192,13 +1203,22 @@ async function keepClear(
     if (clear) found.add(clear.id);
   }
   if (!clear) return null;
+  const fits = (entry: LineupCandidate) => {
+    const left = findContestedGear(
+      entry,
+      other,
+      state.weaponCopies,
+      state.setSlotCounts
+    );
+    return left.artifactIds.length === 0 && left.setSlotKeys.length === 0;
+  };
   if (
     findContestedGear(clear, other, state.weaponCopies).weaponIds.length === 0
   )
-    return clear;
+    return fits(clear) ? clear : null;
   const swapped = swapContestedWeapons(state, clear, other);
   if (swapped) found.add(swapped.id);
-  return swapped;
+  return swapped && fits(swapped) ? swapped : null;
 }
 
 /**
