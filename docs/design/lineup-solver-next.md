@@ -55,6 +55,31 @@ The user accepted these rules:
   bump already does that, so there is no second bump; a local copy already on v8 needs its results
   recomputed once.
 
+### As built (2026-10-23)
+
+Commits 9ecb7e73 (80% continuous, `castTrigger`) and 781a2e39 (off-field Burst and everyone else
+at one window). Tests in `tests/domain/combat/damage/setUptime.test.ts`.
+
+Replay of the 06:05 export with the hand shares stripped (`lineupReplay.ts`, 600 s per team,
+1,454 s, 82 candidates):
+
+| Boss | Exported (old default, hand shares) | Replay (new default, no shares) |
+|---|---|---|
+| 10121 Lunar-Stellar | ×1.266, Ineffa in Instructor | ×1.266, same build |
+| 10013 Mizuki | ×0.776, Sucrose in Instructor, Layla in Noblesse | ×0.798, Sucrose in VV, Layla in Instructor |
+| 10123 Sandrone | ×1.054, Diona in Instructor | ×1.026, Diona in Instructor |
+| Floor | ×0.776 | ×0.798 |
+
+- Instructor still sits on every team, but now on wearers who keep it up: Ineffa, Layla and
+  Diona all hit off-field with their Skill and get 80%. Sucrose, at 47% for Instructor, moved to
+  VV. Among all candidates, Sucrose wears VV in 22 and Instructor in 2.
+- The floor change (+3%) is within replay noise (item 2), and two things changed at once (the
+  rule and the dropped shares). So it shows the picks are plausible, not that the floor improved.
+- Margins are ratios to the recorded build, which is now priced by the same rule (Diona's
+  Tenacity at 80% instead of the 0.5 share). That is why Sandrone's margin moved on a similar
+  build.
+- Not checked: Analysis' damage card against the new defaults in the browser.
+
 ## 1. Chain lineups that do not fit (do first)
 
 On the 18:52 export the weakest-first chain reports a lineup with floor ×0.707 (Sandrone on
