@@ -3,8 +3,9 @@
 Status: decisions and design, 2026-10-16. P1 is implemented as Build comparison › Team sets,
 P0 as Team Comp › Lineups (2026-10-18), P2 as Lineups › Abyss lineups and P3 as Lineups ›
 Stygian lineup (2026-10-19), with the fixes in "P3 fixes". P5 is implemented as Lineups ›
-Worth levelling (2026-10-21, "P5 levelling advisor"), with "P5 follow-ups". P4 has five
-measured runs ("P4 comparison" and the later exports, 2026-10-21 and 22); P6 is not done.
+Worth levelling (2026-10-21, "P5 levelling advisor"), with "P5 follow-ups". P4 is decided
+("P4 conclusion", 2026-10-23); P6 is not done. Next steps and new results go in
+[lineup-solver-next.md](lineup-solver-next.md), not here.
 Source: the feasibility study in `~/mistilteinn/reference/notes/team-solver-study.md`, which
 compares this repo with Genshin Optimizer (GO) and gcsim, and the decisions made with the user
 after it.
@@ -1176,3 +1177,15 @@ browser run 06:05 (inputs identical to 12:16):
 - 18:52: the weakest-first lineup reaches ×0.707, but the joint plan stays at ×0.584, which
   leximin could not do if that lineup fit within the MILP's limits. The chain and the MILP
   disagree on some piece, set slot or weapon copy; being traced (replay with `--dump`).
+
+## P4 conclusion (2026-10-23)
+
+Over six Stygian exports (12:01, 18:20, 11:35, 12:16, 18:52 and the user's 20:31/06:05 pair):
+
+- Keep the multi-team work. The gain is in the diversify re-runs (without them, the recorded
+  builds or no lineup); the MILP selects among found candidates, choosing team-to-boss
+  assignments and combining passes, and is not extended into joint search.
+- Both chains stay, weakest first with picks that keep every later boss a candidate; least
+  shortfall leads when no lineup clears.
+- Open: the 18:52 chain lineup the MILP rejects, and re-run noise. Both, with P6 and the checks
+  only the user can make, are in [lineup-solver-next.md](lineup-solver-next.md).
