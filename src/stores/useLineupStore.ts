@@ -48,6 +48,8 @@ interface LineupState extends LineupData {
     patch: Partial<Pick<Calibration, "measuredSeconds" | "downtimeSeconds">>
   ) => void;
   removeCalibration: (id: string) => void;
+  /** Replaces all lineup data, as a backup file import does. */
+  replaceData: (data: LineupData) => void;
 }
 
 /** Calibrations need their template and encounter, and a pair keeps only
@@ -172,6 +174,14 @@ export const useLineupStore = create<LineupState>()(
           state.calibrations = state.calibrations.filter(
             (entry) => entry.id !== id
           );
+        }),
+
+      replaceData: (data) =>
+        set((state) => {
+          state.encounters = data.encounters;
+          state.templates = data.templates;
+          state.calibrations = consistentCalibrations(data);
+          state.resPhasesByBoss = data.resPhasesByBoss;
         }),
     })),
     {

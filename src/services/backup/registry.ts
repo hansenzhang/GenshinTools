@@ -51,14 +51,15 @@ export const CLOUD_BACKUP_DESCRIPTORS: CloudBackupDescriptor[] = [
     conflictPolicy: "explicit-choice",
   },
   {
-    // Encounters, team templates and calibration clears stay on this device
-    // until the lineup solver is proven.
+    // Encounters, team templates and calibration clears move between
+    // devices only in backup files (see backupFile.ts); cloud sync leaves
+    // them out until the lineup solver is proven.
     id: "lineups",
     localStorageKey: "lineup-storage",
     class: "teams",
     includeInBackup: false,
     namespaces: [],
-    currentVersion: 1,
+    currentVersion: 2,
     conflictPolicy: "excluded",
   },
   {

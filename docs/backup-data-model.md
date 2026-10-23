@@ -1,6 +1,6 @@
 # Backup Data Model
 
-Last updated: 2026-05-10.
+Last updated: 2026-10-23.
 
 This document is the source of truth for cloud backup data schemas, browser storage scope, partition modeling, and restore boundaries. Auth, API behavior, and operational setup live in `docs/account-system.md`.
 
@@ -103,6 +103,7 @@ V1 partition keys are coarse to reduce D1 writes and Worker request count.
 | `builds/all` | Artifact build source data and artifact score settings. | `explicit-choice` |
 | `teams/all` | Team source data and team configs. | `explicit-choice` |
 | `tiers/all` | Character, weapon, and artifact tier-list instances. | `explicit-choice` |
+| `lineups/all` | Lineup encounters, team templates, calibrations, boss RES phases. Backup file only, never uploaded. | `excluded` |
 
 `profile-import-wins` does not mean silent background overwrite. It means an explicit profile import/replace action may overwrite cloud after the user chooses it. Manual backup still shows conflicts when local and cloud both changed.
 
@@ -345,6 +346,36 @@ Default decisions:
 
 Fresh devices initialize local stores with defaults. Partitions can mark default state as `isDefaultState`; if cloud exists and local is only default state, the planner should download instead of reporting a first-sync conflict. Default-state partitions are still uploaded when cloud has no head, so a brand-new backup publishes empty heads consistently and metadata can show `0` instead of "No record".
 
+## Local Backup File
+
+Added 2026-10-23. A backup file moves all user data between browsers without the Worker, for self-hosted installs and for moving lineup work between machines. It reuses the cloud adapters offline: the file holds the same `CloudExportPartition` objects that cloud sync uploads, so every restore runs through the same `fromCloud` migrations.
+
+```json
+{
+  "app": "GenshinTools",
+  "kind": "full-backup",
+  "fileVersion": 1,
+  "createdAt": 1761200000000,
+  "partitions": [
+    { "namespace": "teams", "partitionKey": "all", "schemaVersion": 8, "conflictPolicy": "explicit-choice", "payload": {} }
+  ]
+}
+```
+
+| Section | Namespaces | On import |
+| --- | --- | --- |
+| Account | `profile.app`, `profile.game`, `profile.artifacts` | Merged by profile, like cloud restore. |
+| Builds | `builds` | Replaces this browser's builds and artifact score settings. |
+| Teams | `teams` | Replaces this browser's team comps and configs. |
+| Tier lists | `tiers` | Replaces this browser's tier lists. |
+| Lineups | `lineups` | Replaces this browser's encounters, team templates, calibrations and boss RES phases. |
+
+- `lineups/all` is **file-only**. Its registry descriptor stays `includeInBackup: false`, and `buildLocalBackupPartitions()` (the cloud upload set) leaves it out. `buildBackupFilePartitions()` adds it for files.
+- Team templates refer to teams by id, so lineups are only meaningful alongside the Teams section. A file import that brings lineups without the matching teams warns about the templates whose team is missing.
+- `fileVersion` versions the envelope only. Each partition's `schemaVersion` is checked against the registry's `currentVersion`. A file with a newer partition is refused, just as the sync planner refuses a newer cloud head.
+- The file holds only what the adapters export. Everything listed under excluded storage, credentials included, stays out.
+- The user picks which sections to import. Unticked sections are left untouched.
+
 ## Adding A Backed-Up Domain
 
 To add a new backup domain:
@@ -354,6 +385,7 @@ To add a new backup domain:
 3. Include it in `src/contexts/backup/storeAdapters.ts`.
 4. Keep partition keys stable and path-safe.
 5. Add round-trip tests and sync-planner/restore tests for the new partition.
-6. Update this document with included/excluded storage scope.
+6. Add its namespaces to a section in `src/services/backup/backupFile.ts` so backup files carry it.
+7. Update this document with included/excluded storage scope.
 
 Do not make cloud payloads depend on raw persisted localStorage JSON. Use adapter-owned payloads and store-owned restore paths.

@@ -320,6 +320,48 @@ export const i18nUiData = {
     signOut: { en: "Sign out", zh: "退出登录" },
     manageAccount: { en: "Manage account", zh: "管理账号" },
     syncData: { en: "Sync data", zh: "同步数据" },
+    backupFile: {
+      menu: { en: "Backup & restore", zh: "备份与恢复" },
+      description: {
+        en: "Move your accounts, builds, teams, tier lists and lineups to another browser or computer with one file.",
+        zh: "用一个文件把账号、配装、队伍、榜单和阵容规划搬到另一个浏览器或电脑。",
+      },
+      export: { en: "Download backup", zh: "下载备份" },
+      exported: { en: "Backup downloaded", zh: "备份已下载" },
+      chooseFile: { en: "Restore from file", zh: "从文件恢复" },
+      fileFrom: { en: "Backup from {0}", zh: "备份时间：{0}" },
+      restoreHint: {
+        en: "Accounts merge by profile. Every other ticked section replaces what is on this device.",
+        zh: "账号按档案合并，其余勾选的内容会覆盖本设备上的数据。",
+      },
+      restore: { en: "Restore", zh: "恢复" },
+      restored: { en: "Backup restored", zh: "备份已恢复" },
+      missingTeams: {
+        en: "{0} lineup templates point to teams that are not on this device. Restore Teams too.",
+        zh: "有 {0} 个阵容模板引用的队伍不在本设备上，请一并恢复队伍。",
+      },
+      notJson: {
+        en: "This file is not valid JSON.",
+        zh: "该文件不是有效的 JSON。",
+      },
+      notBackup: {
+        en: "This file is not a GenshinTools backup.",
+        zh: "该文件不是 GenshinTools 备份。",
+      },
+      newerVersion: {
+        en: "This backup comes from a newer version of the site. Update this site, then try again.",
+        zh: "该备份来自更新版本的网站，请先更新本站再试。",
+      },
+      restoreFailed: {
+        en: "The backup could not be restored. Nothing was changed in the failing section.",
+        zh: "备份恢复失败，出错的部分未做更改。",
+      },
+      sections: {
+        account: { en: "Accounts", zh: "账号" },
+        accountCount: { en: "{0} profiles", zh: "{0} 个档案" },
+        lineupsCount: { en: "{0} templates", zh: "{0} 个模板" },
+      },
+    },
     feedback: { en: "Feedback", zh: "反馈" },
     supportMe: { en: "Support development", zh: "支持开发" },
     supportTitle: { en: "Support GGArtifact", zh: "支持 GGArtifact" },

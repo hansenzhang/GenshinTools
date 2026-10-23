@@ -6,7 +6,8 @@ export type CloudNamespace =
   | "profile.artifacts"
   | "builds"
   | "teams"
-  | "tiers";
+  | "tiers"
+  | "lineups";
 
 export type StoreDataClass =
   | "account"
@@ -127,6 +128,7 @@ export type CloudRestorePlan = {
   weaponTierLists?: unknown;
   artifactTierLists?: unknown;
   artifactScore?: unknown;
+  lineups?: unknown;
   triageByProfileId?: unknown;
   resourcesByProfileId?: unknown;
   recommendationsByProfileId?: unknown;

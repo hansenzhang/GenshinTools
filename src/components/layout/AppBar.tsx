@@ -1,4 +1,5 @@
 import {
+  ArchiveRestore,
   Check,
   ChevronDown,
   CircleUserRound,
@@ -19,6 +20,7 @@ import {
 import { useEffect, useRef, useState, useTransition } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { toast } from "sonner";
+import { BackupFileDialog } from "@/components/layout/BackupFileDialog";
 import { ImportIcon } from "@/components/shared/importExportIcons";
 import { Button } from "@/components/ui/button";
 import {
@@ -141,6 +143,7 @@ export function AppBar({
   const [_isPending, startTransition] = useTransition();
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [isHidden, setIsHidden] = useState(false);
+  const [isBackupOpen, setIsBackupOpen] = useState(false);
   const lastScrollY = useRef(0);
   const isExpandedActionBar = useMediaQuery("(min-width: 640px)");
 
@@ -436,6 +439,13 @@ export function AppBar({
             <ImportIcon className="w-4 h-4" />
             {t.ui("accountData.importGameAccount")}
           </Link>
+        </DropdownMenuItem>
+        <DropdownMenuItem
+          onClick={() => setIsBackupOpen(true)}
+          className="gap-2"
+        >
+          <ArchiveRestore className="w-4 h-4" />
+          {t.ui("accountSystem.backupFile.menu")}
         </DropdownMenuItem>
         <DropdownMenuItem asChild className="gap-2">
           <Link to={SCANNER_DOWNLOAD_PAGE}>
@@ -793,6 +803,7 @@ export function AppBar({
           </div>
         </div>
       )}
+      <BackupFileDialog open={isBackupOpen} onOpenChange={setIsBackupOpen} />
     </>
   );
 }

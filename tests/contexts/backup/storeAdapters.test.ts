@@ -1,8 +1,10 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import {
   applyCloudRestorePlan,
+  buildBackupFilePartitions,
   buildCloudRestorePlan,
   buildLocalBackupPartitions,
+  importBackupFilePartitions,
 } from "@/contexts/backup/storeAdapters";
 import type {
   CloudConflictPolicy,
@@ -15,11 +17,18 @@ import type {
   AccountState,
 } from "@/domain/game-account/types";
 import type { ArtifactData, Build } from "@/domain/models";
+import { createAbyssEncounter, createTeamTemplate } from "@/domain/team/lineup";
+import {
+  createBackupFile,
+  parseBackupFile,
+  partitionsForSections,
+} from "@/services/backup/backupFile";
 import { useAccountStore } from "@/stores/useAccountStore";
 import { useAchievementStore } from "@/stores/useAchievementStore";
 import { useArtifactScoreStore } from "@/stores/useArtifactScoreStore";
 import { useBuildsStore } from "@/stores/useBuildsStore";
 import { useFreezeStore } from "@/stores/useFreezeStore";
+import { useLineupStore } from "@/stores/useLineupStore";
 import type { ResourceRecState } from "@/stores/useResourceRecStore";
 import { useResourceRecStore } from "@/stores/useResourceRecStore";
 import type { ScoreUpSettingsState } from "@/stores/useScoreUpSettingsStore";
@@ -38,6 +47,7 @@ describe("cloud store adapters", () => {
     useScoreUpSettingsStore.setState({ settingsByProfileId: {} });
     useBuildsStore.getState().clearAll();
     useTeamStore.getState().clearTeams();
+    clearLineups();
     useArtifactScoreStore.getState().resetConfig();
     useTierStore.setState({
       tierLists: {
@@ -77,6 +87,73 @@ describe("cloud store adapters", () => {
     expect(plan.accounts).toBeUndefined();
     expect(plan.teams).toBeUndefined();
     expect(plan.characterTierLists).toBeUndefined();
+  });
+
+  it("keeps lineups out of cloud partitions but puts them in backup files", () => {
+    useLineupStore.getState().addEncounters([createAbyssEncounter("e1", 3, 1)]);
+    expect(
+      buildLocalBackupPartitions().some(
+        (entry) => entry.namespace === "lineups"
+      )
+    ).toBe(false);
+    expect(
+      buildBackupFilePartitions().filter(
+        (entry) => entry.namespace === "lineups"
+      )
+    ).toHaveLength(1);
+  });
+
+  it("moves teams and lineups to a fresh device through a backup file", () => {
+    const teamId = useTeamStore.getState().addTeam({
+      name: "Hu Tao",
+      characters: ["hu_tao", "xingqiu"],
+    });
+    const team = useTeamStore.getState().teamCompById[teamId]!;
+    useLineupStore.getState().addEncounters([createAbyssEncounter("e1", 3, 1)]);
+    useLineupStore.getState().addTemplate(createTeamTemplate("t1", team));
+    const text = JSON.stringify(
+      createBackupFile(buildBackupFilePartitions(), 1)
+    );
+
+    useTeamStore.getState().clearTeams();
+    clearLineups();
+
+    const parsed = parseBackupFile(text);
+    if (!parsed.ok) throw new Error(parsed.reason);
+    const result = importBackupFilePartitions(parsed.partitions);
+
+    expect(result.appliedSections).toEqual(
+      expect.arrayContaining(["teams", "lineups"])
+    );
+    expect(result.templatesMissingTeams).toBe(0);
+    expect(useTeamStore.getState().teamCompById[teamId]?.name).toBe("Hu Tao");
+    expect(useLineupStore.getState().templates).toEqual([
+      createTeamTemplate("t1", team),
+    ]);
+    expect(useLineupStore.getState().encounters.map((e) => e.id)).toEqual([
+      "e1",
+    ]);
+  });
+
+  it("warns when lineups arrive without their teams", () => {
+    const teamId = useTeamStore.getState().addTeam({ name: "Hu Tao" });
+    const team = useTeamStore.getState().teamCompById[teamId]!;
+    useLineupStore.getState().addTemplate(createTeamTemplate("t1", team));
+    const text = JSON.stringify(
+      createBackupFile(buildBackupFilePartitions(), 1)
+    );
+
+    useTeamStore.getState().clearTeams();
+    clearLineups();
+
+    const parsed = parseBackupFile(text);
+    if (!parsed.ok) throw new Error(parsed.reason);
+    const result = importBackupFilePartitions(
+      partitionsForSections(parsed.partitions, new Set(["lineups"] as const))
+    );
+
+    expect(result.appliedSections).toEqual(["lineups"]);
+    expect(result.templatesMissingTeams).toBe(1);
   });
 
   it("never includes local achievement completion in cloud partitions", () => {
@@ -483,4 +560,13 @@ function artifactData(id: string): ArtifactData {
     lock: true,
     substats: {},
   };
+}
+
+function clearLineups() {
+  useLineupStore.setState({
+    encounters: [],
+    templates: [],
+    calibrations: [],
+    resPhasesByBoss: {},
+  });
 }

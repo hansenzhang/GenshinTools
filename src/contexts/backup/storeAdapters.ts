@@ -21,6 +21,12 @@ import {
   buildsToCloud,
 } from "@/services/backup/adapters/buildsAdapter";
 import {
+  type LineupCloudSnapshot,
+  lineupFromCloud,
+  lineupToCloud,
+  templatesMissingTeams,
+} from "@/services/backup/adapters/lineupAdapter";
+import {
   type TeamCloudSnapshot,
   type TeamRestorePatch,
   teamFromCloud,
@@ -40,6 +46,7 @@ import { useArtifactTierStore } from "@/stores/useArtifactTierStore";
 import type { BuildsSourceState } from "@/stores/useBuildsStore";
 import { useBuildsStore } from "@/stores/useBuildsStore";
 import { useFreezeStore } from "@/stores/useFreezeStore";
+import { useLineupStore } from "@/stores/useLineupStore";
 import type { ResourceRecState } from "@/stores/useResourceRecStore";
 import { useResourceRecStore } from "@/stores/useResourceRecStore";
 import type { ScoreUpSettingsState } from "@/stores/useScoreUpSettingsStore";
@@ -89,6 +96,36 @@ export function buildLocalBackupPartitions(): CloudExportPartition[] {
   ];
 }
 
+/** Cloud partitions plus the file-only lineup partition. */
+export function buildBackupFilePartitions(): CloudExportPartition[] {
+  return [
+    ...buildLocalBackupPartitions(),
+    ...lineupToCloud(getLineupSnapshot()),
+  ];
+}
+
+export type BackupFileImportResult = CloudRestoreApplyResult & {
+  /** Imported lineup templates whose Analysis team is not on this device. */
+  templatesMissingTeams: number;
+};
+
+export function importBackupFilePartitions(
+  partitions: CloudExportPartition[]
+): BackupFileImportResult {
+  const result = applyCloudRestorePlan(buildCloudRestorePlan(partitions));
+  if (!result.appliedSections.includes("lineups")) {
+    return { ...result, templatesMissingTeams: 0 };
+  }
+  const teamIds = new Set(Object.keys(useTeamStore.getState().teamCompById));
+  return {
+    ...result,
+    templatesMissingTeams: templatesMissingTeams(
+      useLineupStore.getState().templates,
+      teamIds
+    ).length,
+  };
+}
+
 export function buildCloudRestorePlan(
   partitions: CloudExportPartition[]
 ): CloudRestorePlan {
@@ -129,6 +166,10 @@ export function buildCloudRestorePlan(
     plan.characterTierLists = tierPatch.character;
     plan.weaponTierLists = tierPatch.weapon;
     plan.artifactTierLists = tierPatch.artifact;
+  }
+
+  if (namespaces.has("lineups")) {
+    plan.lineups = lineupFromCloud(partitions);
   }
 
   return plan;
@@ -273,6 +314,11 @@ export function applyCloudRestorePlan(
     appliedSections.push("artifactTierLists");
   }
 
+  if (plan.lineups !== undefined) {
+    useLineupStore.getState().replaceData(plan.lineups as LineupCloudSnapshot);
+    appliedSections.push("lineups");
+  }
+
   return { appliedSections };
 }
 
@@ -312,6 +358,16 @@ function getTeamSnapshot(): TeamCloudSnapshot {
     author: state.author,
     description: state.description,
     updatedAt: state.updatedAt,
+  };
+}
+
+function getLineupSnapshot(): LineupCloudSnapshot {
+  const state = useLineupStore.getState();
+  return {
+    encounters: state.encounters,
+    templates: state.templates,
+    calibrations: state.calibrations,
+    resPhasesByBoss: state.resPhasesByBoss,
   };
 }
 

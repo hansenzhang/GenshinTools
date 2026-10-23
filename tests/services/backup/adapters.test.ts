@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 import { getDefaultBuildPresetId } from "@/domain/build/buildPresetRegistry";
 import { DEFAULT_COMPUTE_OPTIONS } from "@/domain/build/computeFilters";
 import type { ArtifactData, Build, WeaponData } from "@/domain/models";
+import { createAbyssEncounter, createTeamTemplate } from "@/domain/team/lineup";
+import { teamCompInputToComp } from "@/domain/team/teamDeltas";
 import type { TeamInvestmentConfig } from "@/domain/team/types";
 import {
   type AccountCloudSnapshot,
@@ -13,6 +15,12 @@ import {
   buildsFromCloud,
   buildsToCloud,
 } from "@/services/backup/adapters/buildsAdapter";
+import {
+  type LineupCloudSnapshot,
+  lineupFromCloud,
+  lineupToCloud,
+  templatesMissingTeams,
+} from "@/services/backup/adapters/lineupAdapter";
 import {
   type TeamCloudSnapshot,
   teamFromCloud,
@@ -703,3 +711,74 @@ function tierList<TExtra extends object>(id: number, extra?: TExtra) {
     ...(extra ?? {}),
   };
 }
+
+describe("lineup backup adapter", () => {
+  const team = teamCompInputToComp({
+    id: "team-1",
+    name: "Hu Tao",
+    characters: ["hu_tao", "xingqiu"],
+    weapons: ["staff_of_homa", "sacrificial_sword"],
+    artifacts: [null, null],
+  });
+
+  it("round-trips lineup data", () => {
+    const snapshot: LineupCloudSnapshot = {
+      encounters: [
+        createAbyssEncounter("e1", 3, 1),
+        {
+          id: "e2",
+          mode: "stygian",
+          bossId: 10011,
+          enemyLevel: 105,
+          res: { Cryo: 0.5 },
+          resPhases: [{ seconds: 12, all: 2, res: {} }],
+          targets: "",
+          downtimeSeconds: 0,
+          timeBarSeconds: null,
+        },
+      ],
+      templates: [createTeamTemplate("t1", team)],
+      calibrations: [],
+      resPhasesByBoss: { "10011": [{ seconds: 12, all: 2, res: {} }] },
+    };
+    const partitions = lineupToCloud(snapshot);
+    expect(partitions).toMatchObject([
+      { namespace: "lineups", partitionKey: "all", schemaVersion: 2 },
+    ]);
+    expect(lineupFromCloud(JSON.parse(JSON.stringify(partitions)))).toEqual(
+      snapshot
+    );
+  });
+
+  it("migrates a v1 lineup-storage payload", () => {
+    // v1 (2026-10-18) encounters had no resPhases and the store had no
+    // resPhasesByBoss.
+    const { resPhases: _removed, ...v1Encounter } = createAbyssEncounter(
+      "e1",
+      3,
+      2
+    );
+    const restored = lineupFromCloud([
+      {
+        namespace: "lineups",
+        partitionKey: "all",
+        schemaVersion: 1,
+        conflictPolicy: "excluded",
+        payload: {
+          encounters: [v1Encounter],
+          templates: [createTeamTemplate("t1", team)],
+          calibrations: [],
+        },
+      },
+    ]);
+    expect(restored.encounters).toEqual([{ ...v1Encounter, resPhases: [] }]);
+    expect(restored.resPhasesByBoss).toEqual({});
+    expect(restored.templates.map((entry) => entry.teamId)).toEqual(["team-1"]);
+  });
+
+  it("lists templates whose team is missing", () => {
+    const templates = [createTeamTemplate("t1", team)];
+    expect(templatesMissingTeams(templates, new Set(["team-1"]))).toEqual([]);
+    expect(templatesMissingTeams(templates, new Set())).toEqual(templates);
+  });
+});
