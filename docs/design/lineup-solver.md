@@ -445,6 +445,28 @@ To confirm it, runs are now observable:
 - `tests/benchmark/lineupReplay.ts --trace` prints the spans and the run in progress. With
   `--budget-sec 0` it times the same runs in Node.
 
+## P3 run cost, measured (2026-10-28)
+
+The Stygian export of 2026-10-28 10:16 (three teams, 20 min per team, 50 s per run, 79
+real-inventory runs) was replayed in Node with `lineupReplay.ts --trace` at the same budget.
+
+| Optimizer time over 79 runs | Browser | Node |
+|---|---|---|
+| Phase 1 | 512 s | 418 s |
+| Phase 2 | 365 s | 492 s |
+| Phase 3 | 569 s | 848 s |
+| Total | 1,448 s | 1,760 s |
+
+- **The browser is not slower than Node.** The 15–30× above no longer holds, and worker start-up
+  is not a cost: the first member's search, start-up included, ends 0.36 s into a run on
+  average, at most ~30 s over the whole run.
+- **Long Phase 1 tails are the budget, not slowness.** Workers give each member Phase 1's whole
+  budget (per-member deadline × members, 30 s here), the inline path only its own share. The
+  17–30 s tails are one member searching to that deadline while the other three ended in ~1 s.
+- **Most of the run uses one core.** Phase 2 runs inline in the lineup worker, and Phase 1 is
+  mostly one member's tail: ~60% of optimizer time keeps one thread busy. Tasks are independent
+  until `diversify`, so running them in parallel should fill idle cores rather than contend.
+
 ## P3 fixes (2026-10-21)
 
 A Stygian export (Domovoy Sculptor, Overseer Device, Guardian Blade) listed Yae and Odette as
