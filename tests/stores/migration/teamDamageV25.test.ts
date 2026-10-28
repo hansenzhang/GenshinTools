@@ -78,7 +78,7 @@ describe("team store v25 damage settings", () => {
     expect(damage?.calcContext?.enemyResByElement).toBeUndefined();
     expect(
       JSON.parse(localStorage.getItem("team-builder-storage")!).version
-    ).toBe(26);
+    ).toBe(27);
   });
 
   it("keeps saved rotation seconds and per-element RES, dropping invalid values", async () => {
@@ -144,7 +144,7 @@ describe("team store v25 damage settings", () => {
         "team-1": { ...v6.configsByTeamId["team-1"], damage },
       },
     });
-    expect(partition.schemaVersion).toBe(8);
+    expect(partition.schemaVersion).toBe(9);
     expect(teamFromCloud([partition]).configsByTeamId["team-1"].damage).toEqual(
       damage
     );

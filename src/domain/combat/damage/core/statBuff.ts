@@ -111,6 +111,9 @@ const KEY_CONSTRAINTS: Partial<Record<StatKey, KeyConstraint>> = {
  * Key: `${charOrWeaponId}/${origin}`, Value: set of constraint descriptions to skip.
  */
 const CONSTRAINT_ALLOWLIST: Record<string, Set<string>> = {
+  // Nicole C6 grants every party member DEF ignore while her Skill buff lasts.
+  // Unlike ordinary personal DEF ignore, the official effect is team-wide.
+  "nicole/C6": new Set(["defIgnore%:forbidsReceiver"]),
   // Mavuika C2 shreds enemy DEF only while she carries the Ring, so the buff is
   // split "selfOffField" + "other" instead of "team" — a team receiver would also
   // boost her on-field Flamestrider damage, which carries no Ring below C6.
@@ -227,7 +230,11 @@ export function validateStatBuff(
           `${label} ${key} must use receiver "${c.requiresReceiver}". Ask for review for this case.`
         );
       }
-      if (c.forbidsReceiver && target.receiver === c.forbidsReceiver) {
+      if (
+        c.forbidsReceiver &&
+        target.receiver === c.forbidsReceiver &&
+        !isAllowlisted(source, key, "forbidsReceiver")
+      ) {
         throw new Error(
           `${label} ${key} is not expected to use receiver "${c.forbidsReceiver}". Ask for review for this case.`
         );
@@ -275,6 +282,21 @@ export function validateStatBuff(
 }
 
 export function validateOrigin(source: BuffSource): void {
+  if (
+    source.origin?.split("/").some((part) => /^(?:passive|A\d+)$/i.test(part))
+  ) {
+    throw new Error(
+      `BuffSource origin "${source.origin}" uses legacy provenance; use P1–P4 for passive talent origins (id: ${source.id})`
+    );
+  }
+  const invalidTrigger = source.triggers?.find((trigger) =>
+    trigger.split("/").some((part) => /^(?:passive|[APCR]\d+)$/i.test(part))
+  );
+  if (invalidTrigger !== undefined) {
+    throw new Error(
+      `BuffSource trigger "${invalidTrigger}" is provenance, not an activation condition; put kit provenance in origin and use actions/states in triggers (id: ${source.id})`
+    );
+  }
   if (source.type === "extra") return;
   if (source.type === "character" || source.type === "weapon") {
     if (!source.origin) {

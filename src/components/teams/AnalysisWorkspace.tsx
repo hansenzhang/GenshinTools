@@ -1,5 +1,6 @@
 import {
   ArrowLeft,
+  CircleHelp,
   Gem,
   Info,
   Sword,
@@ -87,6 +88,7 @@ import {
 import { teamCompToArrays, teamSetUptimes } from "@/domain/team/teamDeltas";
 import type {
   CharOptConfig,
+  OptimizerArtifactLevel,
   TeamComp,
   TeamDamageConfig,
   TeamSetupConfig,
@@ -700,6 +702,8 @@ export function AnalysisWorkspace({
   // Artifact inventory is provided by useTeamInventory — see teamInventory above
 
   const [timeBudgetSec, setTimeBudgetSec] = useState(30);
+  const [minArtifactLevel, setMinArtifactLevel] =
+    useState<OptimizerArtifactLevel>(0);
 
   // Ephemeral — not persisted to team store. Per-char preferred main stats
   // (sands/goblet/circlet) used to prefilter the optimizer's artifact pool.
@@ -745,8 +749,8 @@ export function AnalysisWorkspace({
     for (let ci = 0; ci < characters.length; ci++) {
       const cid = characters[ci];
       if (!cid) continue;
-      // Only explicit cross-team force reuse holds equipment fixed.
-      if (forceReusedCharIds.has(cid)) continue;
+      // Frozen and force-reused characters keep their equipment fixed.
+      if (frozenCharIdSet.has(cid) || forceReusedCharIds.has(cid)) continue;
       const bm = optimizerBuildMatchByChar[cid];
       const goalArtSet = getGoalArtifactSet(cid);
       const cs = charConfigs[cid];
@@ -860,6 +864,7 @@ export function AnalysisWorkspace({
       baseSheets: optBaseSheets,
       perChar,
       teamDeadlineMs: performance.now() + timeBudgetSec * 1000,
+      minArtifactLevel,
       ignoreArtifactSets: fullSetOptionalByChar,
       perCharExtraArtifacts: teamInventory.perCharExtraArtifacts,
       perCharExcludedArtifactIds,
@@ -906,7 +911,8 @@ export function AnalysisWorkspace({
     }
 
     // Layer 2: Non-locked chars — optimizer results, restored artifacts, or intermediate results
-    const isLocked = (cid: string) => forceReusedCharIds.has(cid);
+    const isLocked = (cid: string) =>
+      frozenCharIdSet.has(cid) || forceReusedCharIds.has(cid);
 
     if (teamResult?.done) {
       for (const [charId, arts] of Object.entries(
@@ -953,6 +959,7 @@ export function AnalysisWorkspace({
     restoredArtifacts,
     teamInventory.forceReuseChars,
     forceReusedCharIds,
+    frozenCharIdSet,
   ]);
 
   const optArtifactSheets = useMemo(
@@ -1113,7 +1120,8 @@ export function AnalysisWorkspace({
     });
   };
 
-  // Freeze a character's equipped artifacts from the current tab
+  // Main-stat preferences filter the next optimizer run; changing them does
+  // not invalidate the displayed allocation or unmount its settings popover.
   const calculationInputKey = JSON.stringify({
     configs,
     damageConfig: setupConfig.damage,
@@ -1124,7 +1132,6 @@ export function AnalysisWorkspace({
     displayCombo,
     buffOverrides,
     accountData,
-    preferredMainStats,
     inventory: teamInventory.availableArtifacts,
     extras: teamInventory.perCharExtraArtifacts,
   });
@@ -1337,26 +1344,26 @@ export function AnalysisWorkspace({
         )}
       >
         {/* ── Page Header ── */}
-        <div className="flex items-center gap-2 px-0.5 lg:px-1">
+        <div className="flex w-full items-center justify-between gap-4 px-0.5 lg:px-1">
           <Button
             variant="ghost"
             size="sm"
             onClick={onBack}
-            className="shrink-0 h-10 px-2 -ml-2 hover:bg-accent"
+            className="shrink-0 px-2 -ml-2 text-foreground/70 hover:bg-accent"
           >
-            <ArrowLeft className="w-4 h-4 mr-1" />
+            <ArrowLeft className="w-4 h-4" />
             {t.ui("teamComp.switchTeam")}
           </Button>
-          <h2 className="text-xl md:text-2xl font-black text-foreground tracking-tight truncate flex-1">
-            {teamComp.name || t.ui("teamComp.teamOptimization")}
-            <span
-              className="inline-block ml-1.5 align-baseline cursor-pointer"
-              onClick={() => setLimitOpen(true)}
-              title={t.ui("calcLimitations.title")}
-            >
-              <Info className="w-5 h-5 text-foreground/70" />
-            </span>
-          </h2>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => setLimitOpen(true)}
+            title={t.ui("calcLimitations.title")}
+            className="shrink-0 px-2 -mr-2 text-foreground/70 hover:bg-accent"
+          >
+            {t.ui("calcLimitations.trigger")}
+            <CircleHelp className="w-4 h-4" />
+          </Button>
         </div>
 
         {/* Card 1 — Team Roster (only rendered when gameStats are ready,
@@ -1649,6 +1656,8 @@ export function AnalysisWorkspace({
               handleOptimize={handleOptimize}
               timeBudgetSec={timeBudgetSec}
               onTimeBudgetChange={setTimeBudgetSec}
+              minArtifactLevel={minArtifactLevel}
+              onMinArtifactLevelChange={setMinArtifactLevel}
               optimizedArtifactsByChar={optimizedArtifactsByChar}
               optimizedDisplayResult={optimizedDisplayResult}
               minErRaw={minErRaw}

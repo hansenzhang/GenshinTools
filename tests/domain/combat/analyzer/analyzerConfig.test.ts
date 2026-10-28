@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { reconcileConfigs } from "@/domain/combat/analyzer/analyzerConfig";
+import {
+  fullToStored,
+  reconcileConfigs,
+} from "@/domain/combat/analyzer/analyzerConfig";
 import type { StoredAnalyzerCharConfig } from "@/domain/combat/analyzer/types";
 import type { TeamSlotConfig } from "@/domain/combat/damage/types";
 
@@ -23,6 +26,73 @@ const stored = (
 ];
 
 describe("investment alternate reconciliation after shared roster edits", () => {
+  it("treats a roster gift sword as a zero-pull R5 weapon, including saved configs", () => {
+    const base = {
+      ...roster("exaiphanes_blade"),
+      charId: "traveler_cryo",
+      refinement: 1,
+    };
+    for (const configs of [
+      [],
+      [
+        {
+          charId: base.charId,
+          altWeapon: { id: "mistsplitter_reforged" },
+          maxConstellation: 6,
+          maxRefinement: 5,
+        },
+      ],
+    ]) {
+      const [config] = reconcileConfigs(configs, [base]);
+      expect(config.weapon4Star).toEqual({
+        id: "exaiphanes_blade",
+        refinement: 5,
+      });
+      expect(config.startRefinement).toBe(0);
+      expect(config.weapon5Star).toEqual(
+        configs.length ? { id: "mistsplitter_reforged" } : undefined
+      );
+    }
+  });
+  it("keeps a saved gift-sword alternate in the zero-pull group through roundtrip", () => {
+    const base = {
+      ...roster("mistsplitter_reforged"),
+      charId: "traveler_cryo",
+    };
+    const [config] = reconcileConfigs(
+      [
+        {
+          charId: base.charId,
+          altWeapon: { id: "exaiphanes_blade", refinement: 1 },
+          maxConstellation: 6,
+          maxRefinement: 5,
+        },
+      ],
+      [base]
+    );
+    expect(config.weapon4Star).toEqual({
+      id: "exaiphanes_blade",
+      refinement: 5,
+    });
+    expect(reconcileConfigs([fullToStored(config, base)], [base])[0]).toEqual(
+      config
+    );
+  });
+  it("uses free Traveler C6 for fresh and saved investment configs", () => {
+    const base = {
+      ...roster("favonius_sword"),
+      charId: "traveler_anemo",
+      constellation: 3,
+    };
+    expect(reconcileConfigs([], [base])[0].startConstellation).toBe(6);
+    expect(reconcileConfigs([], [base])[0].maxConstellation).toBe(6);
+    expect(
+      reconcileConfigs(
+        [{ charId: base.charId, maxConstellation: 6, maxRefinement: 5 }],
+        [base]
+      )[0].maxConstellation
+    ).toBe(6);
+  });
   it("does not reinterpret a saved four-star alternate as a five-star target", () => {
     const [config] = reconcileConfigs(
       stored({ id: "dragons_bane", refinement: 4 }),

@@ -62,7 +62,7 @@ describe("migrateTeamResultCacheStore", () => {
     expect(useTeamResultCacheStore.getState().resultsByTeamId).toEqual({});
     expect(
       JSON.parse(window.localStorage.getItem("team-result-cache")!).version
-    ).toBe(8);
+    ).toBe(9);
     window.localStorage.removeItem("team-result-cache");
   });
 
@@ -96,7 +96,7 @@ describe("migrateTeamResultCacheStore", () => {
     await useTeamResultCacheStore.persist.rehydrate();
     expect(useTeamResultCacheStore.getState().resultsByTeamId).toEqual({});
     expect(JSON.parse(localStorage.getItem("team-result-cache")!).version).toBe(
-      8
+      9
     );
     localStorage.removeItem("team-result-cache");
   });
@@ -113,7 +113,7 @@ describe("migrateTeamResultCacheStore", () => {
     ).toEqual({});
   });
 
-  it("preserves current v8 results", () => {
+  it("clears upstream v8 results that lack the set uptime fix", () => {
     const resultsByTeamId = {
       "team-1": {
         weaponChoiceResult: { mode: "weapon", timestamp: 1, perCharacter: {} },
@@ -122,14 +122,53 @@ describe("migrateTeamResultCacheStore", () => {
     };
     expect(
       migrateTeamResultCacheStore({ resultsByTeamId }, 8).resultsByTeamId
+    ).toEqual({});
+  });
+
+  it("preserves current v9 results", () => {
+    const resultsByTeamId = {
+      "team-1": {
+        weaponChoiceResult: { mode: "weapon", timestamp: 1, perCharacter: {} },
+        weaponChoiceInputKey: "inputs",
+      },
+    };
+    expect(
+      migrateTeamResultCacheStore({ resultsByTeamId }, 9).resultsByTeamId
     ).toBe(resultsByTeamId);
+  });
+
+  it("invalidates v7 paid-Traveler and additive DEF results through hydration", async () => {
+    localStorage.setItem(
+      "team-result-cache",
+      JSON.stringify({
+        version: 7,
+        state: {
+          resultsByTeamId: {
+            team: {
+              investmentResult: {
+                timestamp: 1,
+                bestAtTier: [],
+                nodesByJin: [],
+              },
+              optimizationResult: { timestamp: 1, totalDamage: 123456 },
+            },
+          },
+        },
+      })
+    );
+    await useTeamResultCacheStore.persist.rehydrate();
+    expect(useTeamResultCacheStore.getState().resultsByTeamId).toEqual({});
+    expect(JSON.parse(localStorage.getItem("team-result-cache")!).version).toBe(
+      9
+    );
+    localStorage.removeItem("team-result-cache");
   });
 
   it("hydrates independent comparison signatures and clears both with their results", async () => {
     localStorage.setItem(
       "team-result-cache",
       JSON.stringify({
-        version: 8,
+        version: 9,
         state: {
           resultsByTeamId: {
             team: {

@@ -70,6 +70,7 @@ import {
 } from "@/domain/team/teamDeltas";
 import type {
   OptFailReason,
+  OptimizerArtifactLevel,
   TeamComp,
   TeamOptimizationProgress,
   TeamOptimizationResult,
@@ -1236,6 +1237,8 @@ interface DamageCardProps {
   handleOptimize: () => void;
   timeBudgetSec: number;
   onTimeBudgetChange: (sec: number) => void;
+  minArtifactLevel: OptimizerArtifactLevel;
+  onMinArtifactLevelChange: (level: OptimizerArtifactLevel) => void;
   optimizedArtifactsByChar: Record<string, Record<string, ArtifactData>>;
   optimizedDisplayResult: DisplayResult | null | undefined;
   minErRaw: number;
@@ -1600,6 +1603,8 @@ export function DamageCard({
   handleOptimize,
   timeBudgetSec,
   onTimeBudgetChange,
+  minArtifactLevel,
+  onMinArtifactLevelChange,
   optimizedArtifactsByChar,
   optimizedDisplayResult,
   minErRaw,
@@ -1669,6 +1674,12 @@ export function DamageCard({
   const [resultsTab, setResultsTab] = useSessionState<
     "current" | "optimize" | "generate"
   >("resultsTab", "current");
+  const hasFrozenChars = characters.some(
+    (cid) => cid && frozenCharIds?.has(cid)
+  );
+  const isFullyFrozen =
+    hasFrozenChars &&
+    characters.every((cid) => !cid || frozenCharIds?.has(cid));
   const [critMode, setCritMode] = useSessionState<CritMode>(
     "critMode",
     "expected"
@@ -1974,6 +1985,41 @@ export function DamageCard({
               {hasStellarConduct && <StellarDirectCoeffFields {...ctxProps} />}
               {uptimeFields}
               <div className="flex items-center gap-0.5 md:gap-1">
+                <span className={LABEL_CLS}>
+                  {t.ui("teamComp.minArtifactLevel")}
+                </span>
+                <Select
+                  value={String(minArtifactLevel)}
+                  onValueChange={(value) =>
+                    onMinArtifactLevelChange(
+                      value === "max" ? "max" : (Number(value) as 0 | 4 | 12)
+                    )
+                  }
+                  disabled={isComputing}
+                >
+                  <SelectTrigger
+                    aria-label={t.ui("teamComp.minArtifactLevel")}
+                    className="font-bold border-foreground/20 bg-background text-xs h-6 w-[72px] px-1 py-0 md:text-sm md:h-7 md:w-[84px] md:px-1.5"
+                  >
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="max">
+                      {t.ui("teamComp.artifactLevelMax")}
+                    </SelectItem>
+                    <SelectItem value="12">
+                      {t.ui("teamComp.artifactLevel12")}
+                    </SelectItem>
+                    <SelectItem value="4">
+                      {t.ui("teamComp.artifactLevel4")}
+                    </SelectItem>
+                    <SelectItem value="0">
+                      {t.ui("teamComp.artifactLevel0")}
+                    </SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="flex items-center gap-0.5 md:gap-1">
                 <span className={LABEL_CLS}>{t.ui("teamComp.timeBudget")}</span>
                 <Select
                   value={String(timeBudgetSec)}
@@ -1994,9 +2040,15 @@ export function DamageCard({
               <span>
                 <ActionButton
                   onClick={handleOptimize}
-                  disabled={isComputing || !hasActiveFormula}
+                  disabled={isComputing || !hasActiveFormula || isFullyFrozen}
                   computing={isComputing}
-                  labelIdle={t.ui("teamComp.tabOptimize")}
+                  labelIdle={
+                    isFullyFrozen
+                      ? t.ui("teamComp.allFrozen")
+                      : hasFrozenChars
+                        ? t.ui("teamComp.optimizeRest")
+                        : t.ui("teamComp.tabOptimize")
+                  }
                   labelBusy={t.ui("teamComp.optimizing")}
                 />
               </span>

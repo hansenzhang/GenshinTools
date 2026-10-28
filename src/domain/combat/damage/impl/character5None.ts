@@ -372,7 +372,7 @@ class TravelerAnemo extends CharacterBase {
       // C2: Energy Recharge +16%
       ...(this.constellation >= 2
         ? [
-            new StatBuff(cbs(this, "C2", ["passive"]), { receiver: "self" }, [
+            new StatBuff(cbs(this, "C2", []), { receiver: "self" }, [
               { key: "er", value: 0.16 },
             ]),
           ]
@@ -754,7 +754,7 @@ class TravelerDendro extends CharacterBase {
       ]),
       // P2: Verdant Luxury — Traveler's own EM boosts E DMG by 0.15% per EM point
       new ScalingBuff(
-        cbs(this, "P2", ["A4"]),
+        cbs(this, "P2", []),
         { receiver: "selfOnField", filter: { abilities: ["skill"] } },
         [],
         "em",
@@ -763,7 +763,7 @@ class TravelerDendro extends CharacterBase {
       ),
       // P2: Verdant Luxury — Traveler's own EM boosts Q DMG by 0.1% per EM point
       new ScalingBuff(
-        cbs(this, "P2", ["A4"]),
+        cbs(this, "P2", []),
         { receiver: "selfOnField", filter: { abilities: ["burst"] } },
         [],
         "em",
@@ -1206,13 +1206,13 @@ class TravelerCryo extends CharacterBase {
       // P4 cross-resonance: all elements the Traveler has resonated with.
       // Unlike the other variants this sits on P4 (异邦的层冰), not P3.
       new StatBuff(
-        cbs(this, "P4", ["passive"]),
+        cbs(this, "P4", []),
         { receiver: "self" },
         TRAVELER_RESONANCE_ENTRIES
       ),
       // P2 通明的冽冰: EM +8% of ATK, capped at +160 EM
       new ScalingBuff(
-        cbs(this, "P2", ["passive"]),
+        cbs(this, "P2", []),
         { receiver: "self" },
         [],
         "atk",
@@ -1223,7 +1223,7 @@ class TravelerCryo extends CharacterBase {
       // P3 星耀祝礼: +0.35% Stellar-Conduct/Stellar Swirl base DMG per 100 ATK,
       // cap +7%. Applies to the whole party's stellar reactions.
       new ScalingBuff(
-        cbs(this, "P3", ["passive"]),
+        cbs(this, "P3", []),
         {
           receiver: "team",
           filter: { reactions: ["stellarConduct", "stellarSwirl"] },
@@ -1607,7 +1607,7 @@ class Nicole extends CharacterBase {
     if (this.constellation >= 6) {
       buffs.push(
         new StatBuff(cbs(this, "C6", ["E"]), { receiver: "team" }, [
-          { key: "defReduction%", value: 0.4 },
+          { key: "defIgnore%", value: 0.4 },
         ])
       );
     }

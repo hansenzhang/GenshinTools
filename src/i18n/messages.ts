@@ -597,6 +597,15 @@ export const i18nUiData = {
     },
   },
   community: {
+    reply: { en: "Reply", zh: "回复" },
+    replies: { en: "Replies ({0})", zh: "回复（{0}）" },
+    confirmDelete: { en: "Confirm deletion", zh: "确认删除" },
+    edited: { en: "Edited", zh: "已编辑" },
+    deleted: { en: "Comment deleted", zh: "评论已删除" },
+    updateFailed: {
+      en: "Couldn't update your comment. Please try again.",
+      zh: "评论更新失败，请重试。",
+    },
     discussion: { en: "Discussion", zh: "角色讨论" },
     loading: { en: "Loading posts…", zh: "正在加载…" },
     loadFailed: { en: "Couldn't load posts.", zh: "加载失败。" },
@@ -634,7 +643,6 @@ export const i18nUiData = {
       en: "Couldn't update feedback. Please try again.",
       zh: "反馈更新失败，请重试。",
     },
-    gameSite: { en: "Game site", zh: "游戏站点" },
     title: { en: "Send feedback", zh: "提交反馈" },
     ratingLabel: {
       en: "How satisfied are you with ggartifact.com?",
@@ -1150,16 +1158,16 @@ export const i18nUiData = {
       zh: "圣遗物会按优先级内总分分配",
     },
     recommendationsHelpAllocationDesc: {
-      en: "Within a tier, artifacts are assigned to maximize the tier's total score, not by checking characters one at a time. The score assumes maximum Crit Rate buffs from character, weapon, and artifact effects; Crit Rate above 100% adds 0 score.",
-      zh: "在同一个优先级内，系统会分配圣遗物来最大化该优先级的总分，而不是逐个角色单独判断。评分会假设角色、武器和圣遗物效果提供的最大暴击率增益；超过 100% 的暴击率不再计分。",
+      en: "Artifacts are assigned to maximize each tier's total score, so an individual character may lose score. Current and allocated scores use actual artifact levels; the change is allocated score minus current score. Maximum Crit Rate buffs are assumed, and Crit Rate above 100% adds no score.",
+      zh: "系统按优先级内的总分分配圣遗物，个别角色的评分可能下降。当前评分与分配后评分都按圣遗物实际等级计算，括号内为分配后评分减去当前评分。评分假设最大暴击率增益，超过 100% 的暴击率不再计分。",
     },
     recommendationsHelpUpgradeTitle: {
       en: "Upgrade actions estimate future level-up value",
       zh: "强化操作会估算后续升级收益",
     },
     recommendationsHelpUpgradeDesc: {
-      en: "For an artifact that can still level up, the page estimates the average score gain from its remaining upgrade rolls. The luck selector changes the assumed roll value used for that estimate.",
-      zh: "如果圣遗物还能继续升级，页面会估算剩余强化次数带来的平均分数收益。词条期望会改变这个估算中使用的词条数值假设。",
+      en: "Each upgrade suggestion estimates the extra score beyond the allocated build, including main-stat growth and expected substat rolls. Suggestions are alternatives and their gains should not be added together. The luck selector changes the assumed roll values.",
+      zh: "每条强化建议显示在最佳分配基础上，升满该圣遗物预计额外增加的评分，包含主词条成长与副词条强化。各条建议是独立方案，收益不能直接相加；词条期望会改变副词条的估算数值。",
     },
     recommendationsCalculating: {
       en: "Calculating recommendations",
@@ -1738,10 +1746,13 @@ export const i18nUiData = {
       zh: "移除自定义变化",
     },
     investmentLowWeapon: {
-      en: "3/4★ comparison weapon",
-      zh: "三星/四星对比武器",
+      en: "Zero-pull comparison weapon",
+      zh: "零金对比武器",
     },
-    investmentFiveWeapon: { en: "5★ comparison weapon", zh: "五星对比武器" },
+    investmentFiveWeapon: {
+      en: "Wish 5★ comparison weapon",
+      zh: "抽取五星对比武器",
+    },
     investmentMaxConstellation: { en: "Constellation ceiling", zh: "命座上限" },
     investmentMaxRefinement: { en: "Refinement ceiling", zh: "精炼上限" },
     investmentFullPath: { en: "Full investment path", zh: "完整补金路径" },
@@ -1918,6 +1929,11 @@ export const i18nUiData = {
       en: "Optimization timed out",
       zh: "优化超时",
     },
+    minArtifactLevel: { en: "Min. Artifact Level", zh: "最低圣遗物等级" },
+    artifactLevelMax: { en: "Max", zh: "满级" },
+    artifactLevel12: { en: "Lv. 12", zh: "12级" },
+    artifactLevel4: { en: "Lv. 4", zh: "4级" },
+    artifactLevel0: { en: "Lv. 0", zh: "0级" },
     timeBudget: {
       en: "Budget",
       zh: "时限",
@@ -1978,6 +1994,8 @@ export const i18nUiData = {
       en: "Equipped in account",
       zh: "账号已装备的",
     },
+    optimizeRest: { en: "Optimize remaining", zh: "优化其余" },
+    allFrozen: { en: "All frozen", zh: "全部已冻结" },
     tabOptimize: {
       en: "Optimize",
       zh: "优化",
@@ -3018,6 +3036,10 @@ export const i18nUiData = {
     suggestReroll: { en: "Reroll", zh: "重铸" },
     suggestLevelup: { en: "Level Up", zh: "强化" },
     sanctifyingEssence: { en: "Sanctifying Essence", zh: "祝圣精华" },
+    onlyInitialFourSubstats: {
+      en: "Only initial 4 substats",
+      zh: "只看初始四词条",
+    },
     tierThresholds: { en: "Completeness goal", zh: "完成度目标" },
     minScoreDiff: { en: "Min score gain", zh: "最低收益" },
     gainLabel: { en: "Avg. Gain", zh: "平均收益" },
@@ -3251,6 +3273,7 @@ export const i18nUiData = {
     viewFullHistory: { en: "View Full History", zh: "查看完整历史" },
   },
   calcLimitations: {
+    trigger: { en: "About", zh: "说明" },
     title: { en: "Calculation Limitations", zh: "计算限制" },
   },
   triage: {
@@ -3401,12 +3424,12 @@ export const i18nUiData = {
     backupAmountExtra: { en: "extra", zh: "额外" },
     backupAmountCustom: { en: "custom", zh: "自定义" },
     backupAmountNormalDesc: {
-      en: "Demand margin 5 · filler cap 3 · set-slot keep 3",
-      zh: "需求余量 5 · 过渡上限 3 · 套装部位保留 3",
+      en: "Demand margin 5 · filler cap 2 · set-slot keep 3",
+      zh: "需求余量 5 · 过渡上限 2 · 套装部位保留 3",
     },
     backupAmountExtraDesc: {
-      en: "Demand margin 10 · filler cap 5 · set-slot keep 3",
-      zh: "需求余量 10 · 过渡上限 5 · 套装部位保留 3",
+      en: "Demand margin 10 · filler cap 4 · set-slot keep 3",
+      zh: "需求余量 10 · 过渡上限 4 · 套装部位保留 3",
     },
     qualityMargin: {
       en: "Demand margin (extra keep above demand)",
@@ -3587,8 +3610,8 @@ export const i18nUiData = {
         zh: "此外还有套装部位最低保留，确保每个套装都能凑齐。",
       },
       backupAmountDetail: {
-        en: "Demand margin inflates each build target regardless of quality tier. Filler can fill that target only up to its separate cap. Allocation ignores special tags: any artifact selected by build quality consumes the target. Afterward, ER, double-crit, and off-piece rules lock any remaining matches. Set-slot keep raises the final total only when it is still below its floor. Normal is 5 / 3 / 3; extra is 10 / 5 / 3.",
-        zh: "需求余量会直接扩大每个配装目标，不区分品质档位；过渡装可参与填补，但受独立上限限制。分配时忽略特殊标签：凡按配装质量入选的圣遗物都会占用目标；分配完成后，再额外锁定其余符合充能、双暴与散件规则的圣遗物。套装部位保底仅在最终数量仍不足时补齐。标准为 5 / 3 / 3，额外为 10 / 5 / 3。",
+        en: "Demand margin inflates each build target regardless of quality tier. Filler can fill that target only up to its separate cap. Allocation ignores special tags: any artifact selected by build quality consumes the target. Afterward, ER, double-crit, and off-piece rules lock any remaining matches. Set-slot keep raises the final total only when it is still below its floor. Normal is 5 / 2 / 3; extra is 10 / 4 / 3.",
+        zh: "需求余量会直接扩大每个配装目标，不区分品质档位；过渡装可参与填补，但受独立上限限制。分配时忽略特殊标签：凡按配装质量入选的圣遗物都会占用目标；分配完成后，再额外锁定其余符合充能、双暴与散件规则的圣遗物。套装部位保底仅在最终数量仍不足时补齐。标准为 5 / 2 / 3，额外为 10 / 4 / 3。",
       },
       spTitle: { en: "Exceptions", zh: "例外规则" },
       spOverride: {

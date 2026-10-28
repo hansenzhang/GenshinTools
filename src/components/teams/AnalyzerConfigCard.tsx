@@ -9,15 +9,17 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { useLanguage } from "@/contexts/LanguageContext";
+import { hasPaidConstellations } from "@/domain/combat/analyzer/investmentCost";
 import type { AnalyzerCharConfig } from "@/domain/combat/analyzer/types";
 import type { TeamSlotConfig } from "@/domain/combat/damage/types";
-import { charactersById, weaponsById } from "@/domain/reference/catalog";
+import { charactersById } from "@/domain/reference/catalog";
 import {
   characterStatsResource,
   getCharacterDisplayMeta,
   getWeaponDisplayMeta,
   weaponStatsResource,
 } from "@/domain/reference/stats";
+import { isPaidFiveStarWeapon } from "@/domain/reference/weaponInvestment";
 import { useResource } from "@/hooks/useResource";
 import { CARD_CLS, CARD_HEADER_CLS, CARD_TITLE_CLS } from "./cardStyles";
 
@@ -60,7 +62,7 @@ export function AnalyzerConfigCard({
         <div className="grid grid-cols-1 gap-2 [@container_investment-config_(min-width:28rem)]:grid-cols-2 [@container_investment-config_(min-width:56rem)]:grid-cols-4">
           {charConfigs.map((config) => {
             const base = configs.find((c) => c.charId === config.charId)!;
-            const baseFive = weaponsById[base.weaponId]?.rarity === 5;
+            const baseFive = isPaidFiveStarWeapon(base.weaponId);
             return (
               <section
                 key={config.charId}
@@ -100,8 +102,9 @@ export function AnalyzerConfigCard({
                           }}
                           filter={(weapon) =>
                             (star === "5"
-                              ? weapon.rarity === 5
-                              : weapon.rarity === 3 || weapon.rarity === 4) &&
+                              ? isPaidFiveStarWeapon(weapon.id)
+                              : weapon.rarity >= 3 &&
+                                !isPaidFiveStarWeapon(weapon.id)) &&
                             (!characterStats ||
                               !weaponStats ||
                               getWeaponDisplayMeta(
@@ -117,9 +120,9 @@ export function AnalyzerConfigCard({
                       </div>
                     );
                   })}
-                {(config.rarity === 5 || config.weapon5Star) && (
+                {(hasPaidConstellations(config) || config.weapon5Star) && (
                   <div className="grid grid-cols-2 gap-2">
-                    {config.rarity === 5 && (
+                    {hasPaidConstellations(config) && (
                       <div className="space-y-1">
                         <span className="text-xs">
                           {t.ui("teamComp.investmentMaxConstellation")}

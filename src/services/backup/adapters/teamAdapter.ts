@@ -4,6 +4,7 @@ import {
   type TeamCompDelta,
 } from "@/domain/team/teamDeltas";
 import type { TeamSetupConfig } from "@/domain/team/types";
+import { migrateCharacterBuffTriggerConfigs } from "@/stores/migration/characterBuffTriggers";
 import { migrateReleasedTeamWeapons } from "@/stores/migration/releasedWeaponIds";
 import { migrateTeamAnalysisConfigs } from "@/stores/migration/teamAnalysis";
 import {
@@ -36,12 +37,14 @@ export type TeamRestorePatch = TeamCloudSnapshot;
 export function teamToCloud(
   snapshot: TeamCloudSnapshot
 ): CloudExportPartition<TeamCloudPayload>[] {
-  const configsByTeamId = compactTeamSetupConfigs(snapshot.configsByTeamId);
+  const configsByTeamId = compactTeamSetupConfigs(
+    migrateCharacterBuffTriggerConfigs(snapshot.configsByTeamId)
+  );
   return [
     {
       namespace: "teams",
       partitionKey: "all",
-      schemaVersion: 8,
+      schemaVersion: 9,
       conflictPolicy: "explicit-choice",
       isDefaultState: isDefaultTeamSnapshot(snapshot, configsByTeamId),
       payload: {
@@ -73,6 +76,8 @@ export function teamFromCloud(
   if (partition && partition.schemaVersion < 5) {
     configsByTeamId = migrateTeamAnalysisConfigs(configsByTeamId);
   }
+  // Canonicalize v7 snapshots created during this unpublished release too.
+  configsByTeamId = migrateCharacterBuffTriggerConfigs(configsByTeamId);
   const restored = {
     activePresetId: current?.activePresetId ?? null,
     compDeltas: current?.compDeltas ?? [],
@@ -93,6 +98,8 @@ export function teamFromCloud(
   // damage.calcContext.enemyResByElement; v6 payloads restore without them.
   // Cloud v8 adds optional damage.setUptimes; v7 payloads restore without it
   // and use the default uptime derived from rotationSeconds.
+  // Cloud v9 joins upstream's v7 (canonical buff trigger labels, applied to
+  // every restore above) with this fork's v7/v8 fields.
   return {
     ...migrated,
     activePresetId: parsed.activePresetId,

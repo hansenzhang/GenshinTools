@@ -68,7 +68,7 @@ describe("team store v26 set uptimes", () => {
     expect(damage?.setUptimes).toBeUndefined();
     expect(
       JSON.parse(localStorage.getItem("team-builder-storage")!).version
-    ).toBe(26);
+    ).toBe(27);
   });
 
   it("keeps saved uptimes and drops invalid ones", async () => {
@@ -124,7 +124,7 @@ describe("team store v26 set uptimes", () => {
         "team-1": { ...v7.configsByTeamId["team-1"], damage },
       },
     });
-    expect(partition.schemaVersion).toBe(8);
+    expect(partition.schemaVersion).toBe(9);
     expect(teamFromCloud([partition]).configsByTeamId["team-1"].damage).toEqual(
       damage
     );

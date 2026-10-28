@@ -31,7 +31,7 @@ class Zibai extends CharacterBase {
       // P3: Per 100 DEF → +0.7% Lunar-Crystallize Base DMG, cap 14%
       // "月结晶反应的基础伤害" → reactionBaseDmg% (separate zone from baseDmg%/倍率乘区)
       new ScalingBuff(
-        cbs(this, "P3", ["passive"]),
+        cbs(this, "P3", []),
         { receiver: "team", filter: { reactions: ["lunarCrystallize"] } },
         [],
         "def",
@@ -40,7 +40,7 @@ class Zibai extends CharacterBase {
         0.14
       ),
       // P2: Other Geo → DEF +15% each; Other Hydro → EM +60 each
-      new StatBuff(cbs(this, "P2", ["A4"]), { receiver: "self" }, [
+      new StatBuff(cbs(this, "P2", []), { receiver: "self" }, [
         { key: "def%", value: geoCount * 0.15 },
         { key: "em", value: hydroCount * 60 },
       ]),
@@ -560,11 +560,11 @@ class Yelan extends CharacterBase {
 
     const buffs: StatBuff[] = [
       // P1: +6%/12%/18%/30% Max HP based on unique element count
-      new StatBuff(cbs(this, "P1", ["A1"]), { receiver: "self" }, [
+      new StatBuff(cbs(this, "P1", []), { receiver: "self" }, [
         { key: "hp%", value: p1Bonus },
       ]),
       // P2: Q ramps DMG% for on-field, scales with talent level and option tier
-      new StatBuff(cbs(this, "P2", ["A4", "Q"]), { receiver: "teamOnField" }, [
+      new StatBuff(cbs(this, "P2", ["Q"]), { receiver: "teamOnField" }, [
         { key: "dmg%", value: dmgBonus },
       ]),
     ];
@@ -1448,9 +1448,11 @@ class Keqing extends CharacterBase {
     if (this.constellation >= 6) {
       // C6: 4 stacks × 6% = 24% Electro DMG
       buffs.push(
-        new StatBuff(cbs(this, "C6", []), { receiver: "selfOnField" }, [
-          { key: "electro%", value: 0.24 },
-        ])
+        new StatBuff(
+          cbs(this, "C6", ["normal", "charge", "E", "Q"]),
+          { receiver: "selfOnField" },
+          [{ key: "electro%", value: 0.24 }]
+        )
       );
     }
 
@@ -1593,9 +1595,11 @@ class Qiqi extends CharacterBase {
       if (this.radianceOn) {
         // C2 辉映·星烁: +50% ATK — additive with the base clause above
         buffs.push(
-          new StatBuff(cbs(this, "C2", ["passive"]), { receiver: "self" }, [
-            { key: "atk%", value: 0.5 },
-          ])
+          new StatBuff(
+            cbs(this, "C2", ["polestar-field", "stellarSwirl"]),
+            { receiver: "self" },
+            [{ key: "atk%", value: 0.5 }]
+          )
         );
       }
     }

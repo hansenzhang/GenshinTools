@@ -395,45 +395,36 @@ export function AppBar({
                 {t.ui("accountSystem.syncData")}
               </Link>
             </DropdownMenuItem>
-            <DropdownMenuItem
-              onClick={() => navigate("/feedback")}
-              className="gap-2"
-            >
-              <MessageSquare className="w-4 h-4" />
-              {t.ui("accountSystem.feedback")}
-            </DropdownMenuItem>
-            <DropdownMenuItem asChild className="gap-2">
-              <Link to="/account/support">
-                <HeartHandshake className="w-4 h-4" />
-                {t.ui("accountSystem.supportMe")}
-              </Link>
-            </DropdownMenuItem>
           </>
         ) : (
+          <DropdownMenuItem
+            onClick={() => void handleSignIn()}
+            disabled={isAccountLoading}
+            className="gap-2"
+          >
+            <LogIn className="w-4 h-4" />
+            {t.ui("accountSystem.signIn")}
+          </DropdownMenuItem>
+        )}
+        {isAuthenticated && (
           <>
+            <DropdownMenuItem asChild className="gap-2">
+              <a href={getLogtoAccountCenterSecurityUrl()}>
+                <Settings className="w-4 h-4" />
+                {t.ui("accountSystem.manageAccount")}
+              </a>
+            </DropdownMenuItem>
             <DropdownMenuItem
-              onClick={() => void handleSignIn()}
+              onClick={() => void handleSignOut()}
               disabled={isAccountLoading}
               className="gap-2"
             >
-              <LogIn className="w-4 h-4" />
-              {t.ui("accountSystem.signIn")}
-            </DropdownMenuItem>
-            <DropdownMenuItem
-              onClick={() => navigate("/feedback")}
-              className="gap-2"
-            >
-              <MessageSquare className="w-4 h-4" />
-              {t.ui("accountSystem.feedback")}
-            </DropdownMenuItem>
-            <DropdownMenuItem asChild className="gap-2">
-              <Link to="/account/support">
-                <HeartHandshake className="w-4 h-4" />
-                {t.ui("accountSystem.supportMe")}
-              </Link>
+              <LogOut className="w-4 h-4" />
+              {t.ui("accountSystem.signOut")}
             </DropdownMenuItem>
           </>
         )}
+        <DropdownMenuSeparator />
         <DropdownMenuItem asChild className="gap-2">
           <Link to="/account-data/characters?import=1">
             <ImportIcon className="w-4 h-4" />
@@ -453,25 +444,21 @@ export function AppBar({
             {t.ui("scannerDownload.menu")}
           </Link>
         </DropdownMenuItem>
-        {isAuthenticated && (
-          <>
-            <DropdownMenuSeparator />
-            <DropdownMenuItem asChild className="gap-2">
-              <a href={getLogtoAccountCenterSecurityUrl()}>
-                <Settings className="w-4 h-4" />
-                {t.ui("accountSystem.manageAccount")}
-              </a>
-            </DropdownMenuItem>
-            <DropdownMenuItem
-              onClick={() => void handleSignOut()}
-              disabled={isAccountLoading}
-              className="gap-2"
-            >
-              <LogOut className="w-4 h-4" />
-              {t.ui("accountSystem.signOut")}
-            </DropdownMenuItem>
-          </>
-        )}
+
+        <DropdownMenuSeparator />
+        <DropdownMenuItem
+          onClick={() => navigate("/feedback")}
+          className="gap-2"
+        >
+          <MessageSquare className="w-4 h-4" />
+          {t.ui("accountSystem.feedback")}
+        </DropdownMenuItem>
+        <DropdownMenuItem asChild className="gap-2">
+          <Link to="/account/support">
+            <HeartHandshake className="w-4 h-4" />
+            {t.ui("accountSystem.supportMe")}
+          </Link>
+        </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>
   );

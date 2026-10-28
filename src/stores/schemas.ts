@@ -6,6 +6,7 @@
  * instead of throwing — the app never crashes on corrupted localStorage.
  */
 import { z } from "zod";
+import { DEFAULT_GLOBAL_STAT_WEIGHTS } from "@/domain/build/artifact/scoring/constants";
 import { DEFAULT_COMPUTE_OPTIONS } from "@/domain/build/computeFilters";
 import { isCustomDelta, isPresetDelta } from "@/domain/build/presetDelta";
 import { elements, type SortDirection } from "@/domain/enums";
@@ -16,19 +17,12 @@ import {
 import { DEFAULT_SCORE_UP_SETTINGS } from "@/domain/game-account/scoreUpSettings";
 import { DEFAULT_TRIAGE_SETTINGS } from "@/domain/game-account/triage/constants";
 import { inferTriageBackupAmountMode } from "@/domain/game-account/triage/settings";
-import type { GlobalStatWeights } from "@/domain/models";
 import {
   ArtifactSetConfigSchema,
   EnemyResByElementSchema,
   TeamSlotConfigSchema,
 } from "@/domain/team/schemas";
 import { migrateBundledPresetId } from "@/stores/migration/presetIds";
-
-export const DEFAULT_GLOBAL_STAT_WEIGHTS: GlobalStatWeights = {
-  flatAtk: 30,
-  flatHp: 30,
-  flatDef: 30,
-};
 
 export const DEFAULT_CHARACTER_SORT: {
   tierSort: SortDirection;

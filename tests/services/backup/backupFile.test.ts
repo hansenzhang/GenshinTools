@@ -83,7 +83,7 @@ describe("backup file", () => {
       ok: false,
       reason: "newer-version",
     });
-    const newerTeams = createBackupFile([partition("teams", "all", 9)], 1);
+    const newerTeams = createBackupFile([partition("teams", "all", 10)], 1);
     expect(parseBackupFile(JSON.stringify(newerTeams))).toEqual({
       ok: false,
       reason: "newer-version",

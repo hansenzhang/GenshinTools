@@ -1,6 +1,11 @@
 import type { TeamSlotConfig } from "@/domain/combat/damage/types";
 import type { Rarity } from "@/domain/enums";
 import { charactersById, weaponsById } from "@/domain/reference/catalog";
+import {
+  defaultWeaponRefinement,
+  isPaidFiveStarWeapon,
+} from "@/domain/reference/weaponInvestment";
+import { hasPaidConstellations } from "./investmentCost";
 import type { AnalyzerCharConfig, StoredAnalyzerCharConfig } from "./types";
 
 /** Reconcile stored (persisted) configs into full AnalyzerCharConfigs using roster data. */
@@ -28,24 +33,32 @@ function storedToFull(
 ): AnalyzerCharConfig {
   const charRes = charactersById[sc.charId];
   const rarity = (charRes?.rarity ?? 5) as Rarity;
-  const rosterWeapon = weaponsById[bc.weaponId];
-  const rosterIs5Star = rosterWeapon?.rarity === 5;
+  const rosterIs5Star = isPaidFiveStarWeapon(bc.weaponId);
   const altRarity = sc.altWeapon
     ? weaponsById[sc.altWeapon.id]?.rarity
     : undefined;
-  // A saved alternate belongs to its real rarity, even after a roster Apply
-  // switches the current weapon between the five-star and lower-rarity groups.
+  // Keep paid weapons and zero-pull weapons separate, regardless of rarity.
   const weapon4Star = rosterIs5Star
     ? sc.altWeapon &&
       altRarity !== undefined &&
       altRarity >= 3 &&
-      altRarity <= 4
-      ? { id: sc.altWeapon.id, refinement: sc.altWeapon.refinement ?? 5 }
+      !isPaidFiveStarWeapon(sc.altWeapon.id)
+      ? {
+          id: sc.altWeapon.id,
+          refinement:
+            defaultWeaponRefinement(sc.altWeapon.id) === 5
+              ? 5
+              : (sc.altWeapon.refinement ?? 5),
+        }
       : undefined
-    : { id: bc.weaponId, refinement: bc.refinement };
+    : {
+        id: bc.weaponId,
+        refinement:
+          defaultWeaponRefinement(bc.weaponId) === 5 ? 5 : bc.refinement,
+      };
   const weapon5Star = rosterIs5Star
     ? { id: bc.weaponId }
-    : sc.altWeapon && altRarity === 5
+    : sc.altWeapon && isPaidFiveStarWeapon(sc.altWeapon.id)
       ? { id: sc.altWeapon.id }
       : undefined;
 
@@ -54,9 +67,15 @@ function storedToFull(
     rarity,
     weapon4Star,
     weapon5Star,
-    startConstellation: bc.constellation,
+    startConstellation: sc.charId.startsWith("traveler_")
+      ? 6
+      : bc.constellation,
     startRefinement: rosterIs5Star ? bc.refinement : 0,
-    maxConstellation: Math.max(bc.constellation, sc.maxConstellation),
+    maxConstellation: hasPaidConstellations({ charId: sc.charId, rarity })
+      ? Math.max(bc.constellation, sc.maxConstellation)
+      : sc.charId.startsWith("traveler_")
+        ? 6
+        : bc.constellation,
     maxRefinement: weapon5Star
       ? Math.max(rosterIs5Star ? bc.refinement : 0, sc.maxRefinement)
       : 0,
@@ -67,8 +86,7 @@ export function fullToStored(
   cfg: AnalyzerCharConfig,
   bc: TeamSlotConfig
 ): StoredAnalyzerCharConfig {
-  const rosterWeapon = weaponsById[bc.weaponId];
-  const rosterIs5Star = rosterWeapon?.rarity === 5;
+  const rosterIs5Star = isPaidFiveStarWeapon(bc.weaponId);
 
   const altWeapon = rosterIs5Star
     ? cfg.weapon4Star
@@ -91,19 +109,28 @@ function buildDefaultCharConfigs(
   return baseConfigs.map((bc) => {
     const charRes = charactersById[bc.charId];
     const rarity: Rarity = (charRes?.rarity ?? 5) as Rarity;
-    const weaponRes = weaponsById[bc.weaponId];
-    const is5StarWeapon = weaponRes?.rarity === 5;
+    const is5StarWeapon = isPaidFiveStarWeapon(bc.weaponId);
 
     return {
       charId: bc.charId,
       rarity,
       weapon4Star: !is5StarWeapon
-        ? { id: bc.weaponId, refinement: bc.refinement }
+        ? {
+            id: bc.weaponId,
+            refinement:
+              defaultWeaponRefinement(bc.weaponId) === 5 ? 5 : bc.refinement,
+          }
         : undefined,
       weapon5Star: is5StarWeapon ? { id: bc.weaponId } : undefined,
-      startConstellation: bc.constellation,
+      startConstellation: bc.charId.startsWith("traveler_")
+        ? 6
+        : bc.constellation,
       startRefinement: is5StarWeapon ? bc.refinement : 0,
-      maxConstellation: rarity >= 5 ? 6 : bc.constellation,
+      maxConstellation: hasPaidConstellations({ charId: bc.charId, rarity })
+        ? 6
+        : bc.charId.startsWith("traveler_")
+          ? 6
+          : bc.constellation,
       maxRefinement: is5StarWeapon ? 5 : 0,
     };
   });

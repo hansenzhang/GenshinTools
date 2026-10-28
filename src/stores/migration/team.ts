@@ -18,6 +18,7 @@ import {
   type LegacyPersistedTeam,
 } from "@/stores/migration/teamLegacy";
 import { PersistedTeamStoreSchema } from "@/stores/schemas";
+import { migrateCharacterBuffTriggerConfigs } from "./characterBuffTriggers";
 import { migrateBundledPresetId } from "./presetIds";
 import { migrateReleasedTeamWeapons } from "./releasedWeaponIds";
 import {
@@ -613,6 +614,14 @@ export function migrateTeamStore(
       state.configsByTeamId ?? {}
     );
   }
+  if (version < 27) {
+    // Upstream shipped this canonicalization as its v25 while this fork's v25
+    // and v26 carried rotation/uptime fields. v27 joins both lineages; the
+    // canonicalization is idempotent, so it runs for every version below 27.
+    state.configsByTeamId = migrateCharacterBuffTriggerConfigs(
+      state.configsByTeamId ?? {}
+    );
+  }
   state.configsByTeamId = compactTeamSetupConfigs(state.configsByTeamId ?? {});
   // v24 adds optional absoluteCountTargets for future constellation counts.
   // v23 delta/exact maps are retained verbatim; absent targets stay absent.
@@ -627,6 +636,8 @@ export function migrateTeamStore(
   // uptime. v25 damage configs had no setUptimes; absent keeps the derived
   // default, so nothing is synthesized. Results cached at full uptime are
   // dropped by the result cache's v8 migration.
+  // v27 merges upstream's v25 (canonical character buff trigger labels) with
+  // this fork's v25/v26; see the version < 27 branch above.
 
   delete state.teams;
   return state;
@@ -660,7 +671,11 @@ export function mergeTeamStore<
   const activePresetId = parsed.data.activePresetId;
   const preset = getCachedTeamPreset(activePresetId);
   const deduped = dedupeTeamCompDeltasAgainstPreset(compDeltas, preset);
-  const nextConfigsByTeamId = compactTeamSetupConfigs(configsByTeamId);
+  // The unpublished v25 migration also canonicalizes labels on v25 saves made
+  // while testing this release; do not bump again for the same push.
+  const nextConfigsByTeamId = compactTeamSetupConfigs(
+    migrateCharacterBuffTriggerConfigs(configsByTeamId)
+  );
   for (const [fromId, toId] of Object.entries(deduped.idMap)) {
     if (fromId === toId) continue;
     const config = nextConfigsByTeamId[fromId];

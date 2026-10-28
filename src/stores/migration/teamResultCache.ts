@@ -68,5 +68,13 @@ export function migrateTeamResultCacheStore(
     // reconciled.
     state.resultsByTeamId = {};
   }
+  if (version < 9) {
+    // Upstream's v8 dropped results that counted free Traveler constellations
+    // as pulls, used Nicole's C6 as DEF reduction instead of DEF ignore, and
+    // priced the gifted Exaiphanes' Blade as paid refinements. This fork's v8
+    // dropped results priced at full set uptime. v9 joins both, so results
+    // from either v8 lack the other fix. Recompute results.
+    state.resultsByTeamId = {};
+  }
   return state;
 }

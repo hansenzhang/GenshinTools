@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { DEFAULT_GLOBAL_STAT_WEIGHTS } from "@/domain/build/artifact/scoring/constants";
 import { getDefaultBuildPresetId } from "@/domain/build/buildPresetRegistry";
 import { DEFAULT_COMPUTE_OPTIONS } from "@/domain/build/computeFilters";
 import type { ArtifactData, Build, WeaponData } from "@/domain/models";
@@ -36,7 +37,6 @@ import {
   createEnvelope,
   verifyEnvelopePayload,
 } from "@/services/backup/payload";
-import { DEFAULT_GLOBAL_STAT_WEIGHTS } from "@/stores/schemas";
 
 describe("account cloud adapter", () => {
   it("partitions profiles, game data, artifacts, and disposable weapons", () => {
@@ -361,7 +361,7 @@ describe("cloud source adapters", () => {
     expect(partitions[0]).toMatchObject({
       namespace: "teams",
       partitionKey: "all",
-      schemaVersion: 8,
+      schemaVersion: 9,
     });
     expect(partitions[0].payload).not.toHaveProperty("resultsByTeamId");
     expect(teamFromCloud(partitions)).toEqual({
