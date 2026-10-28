@@ -208,6 +208,23 @@ ratio between two builds agrees with GO's within a stated tolerance, or the gap 
   shortfall first is right either way, but per-boss rewards would argue for maximizing bosses
   cleared outright.
 
+## Stale recorded builds (2026-10-28)
+
+The 2026-10-27 19:11 Stygian export put the Lunar team at ×0.80 against a ×0.97 recorded clear
+(124 s on 120 s). The clear was played with Linnea, but its saved build was captured on
+2026-10-22 with Sucrose in the team, and swapping Linnea into the team did not change it. Every
+candidate was measured against the Sucrose build: best Fischl r ×0.831, Linnea ×0.801. The
+Mizuki team shows the same thing in reverse: its clear (150 s) saved Faruzan, the team now fields
+Sucrose, and the plan credits it r ×1.58.
+
+- A recorded clear whose saved members differ from the team's now shows a warning next to its
+  "Save current build" button (`referenceMatchesTeam`, `domain/team/lineup.ts`). Gear changes
+  are not flagged: the saved build should be the one played, not the current one.
+- Fixed-HP boss events (the Sculptor's 1,000,000 per break, a share of HP per Guardian shield)
+  cancel in `r` when every team sees the same number of them: `T_c = (H − F) ÷ DPS_c = T_meas ÷ r`.
+  They change margins only if their count grows with the clear's length, or if they gate time
+  (shield or HP floor), which is downtime. Neither explains this export.
+
 ## Stop condition
 
 After items 1 and 1b (and item 2 only if its noise changes picks), stop the multi-team solver work and

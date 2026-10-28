@@ -2376,6 +2376,10 @@ export const i18nUiData = {
     marginDowntime: { en: "Downtime too long", zh: "空窗时间过长" },
     buildSaved: { en: "Build saved {0}", zh: "配装记录于 {0}" },
     saveCurrentBuild: { en: "Save current build", zh: "更新为当前配装" },
+    clearTeamChanged: {
+      en: "The team has changed since this build was saved. Lineups compare every option with the saved team, so save the build you cleared with.",
+      zh: "保存此配装后队伍成员已变更。阵容会把所有方案与记录的队伍比较，请更新为通关时的配装。",
+    },
     needAccount: {
       en: "Import account data to record clears",
       zh: "导入账号数据后才能记录通关",

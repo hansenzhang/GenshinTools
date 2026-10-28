@@ -23,6 +23,7 @@ import {
   captureTeamReferenceBuild,
   createTeamTemplate,
   getCharacterTraits,
+  referenceMatchesTeam,
   templateCompositions,
 } from "@/domain/team/lineup";
 import type {
@@ -368,10 +369,12 @@ function MarginReadout({
 function CalibrationRow({
   calibration,
   encounter,
+  teamChanged,
   onRecapture,
 }: {
   calibration: Calibration;
   encounter: Encounter;
+  teamChanged: boolean;
   onRecapture: (() => void) | null;
 }) {
   const { t, language } = useLanguage();
@@ -434,6 +437,11 @@ function CalibrationRow({
           <Trash2 className="h-4 w-4" />
         </Button>
       </span>
+      {teamChanged && (
+        <p className={cn("basis-full text-xs", VALUE_COLORS.cap)}>
+          {t.ui("lineup.clearTeamChanged")}
+        </p>
+      )}
     </div>
   );
 }
@@ -650,6 +658,7 @@ function TemplateCard({
               key={calibration.id}
               calibration={calibration}
               encounter={encountersById.get(calibration.encounterId)!}
+              teamChanged={!referenceMatchesTeam(calibration.reference, team)}
               onRecapture={
                 capture
                   ? () => {

@@ -12,6 +12,7 @@ import {
   createStygianEncounter,
   createTeamTemplate,
   encounterCalcContext,
+  referenceMatchesTeam,
   resPhaseWeights,
   templateCompositions,
 } from "@/domain/team/lineup";
@@ -281,5 +282,40 @@ describe("reference builds", () => {
     expect(build.artifactsByChar.neuvillette).toEqual([
       { ...flower, substats: { cr: 10.5 } },
     ]);
+  });
+
+  it("matches the team only while it fields the saved members", () => {
+    const reference = (charIds: string[]) =>
+      calibration({
+        reference: {
+          capturedAt: 1,
+          slots: charIds.map(
+            (charId): TeamSlotConfig => ({
+              charId,
+              charLevel: 90,
+              constellation: 0,
+              weaponId: "",
+              refinement: 1,
+              artifactSet: { type: "4pc", setId: "marechaussee_hunter" },
+            })
+          ),
+          artifactsByChar: {},
+        },
+      }).reference;
+    expect(
+      referenceMatchesTeam(
+        reference(["zhongli", "kazuha", "furina", "neuvillette"]),
+        team
+      )
+    ).toBe(true);
+    expect(
+      referenceMatchesTeam(
+        reference(["neuvillette", "furina", "xingqiu", "zhongli"]),
+        team
+      )
+    ).toBe(false);
+    expect(
+      referenceMatchesTeam(reference(["neuvillette", "furina", "kazuha"]), team)
+    ).toBe(false);
   });
 });

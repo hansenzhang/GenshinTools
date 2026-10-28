@@ -263,6 +263,23 @@ export function captureTeamReferenceBuild(
   return captureReferenceBuild(slots, equipped, capturedAt);
 }
 
+/** Whether a clear's saved build fielded the team's current members. A
+ *  member swapped after recording leaves every candidate measured against a
+ *  team that was not played. */
+export function referenceMatchesTeam(
+  reference: ReferenceBuild,
+  team: TeamComp
+): boolean {
+  const members = teamCompToArrays(team).characters.filter(
+    (charId): charId is string => charId != null
+  );
+  const saved = new Set(reference.slots.map((slot) => slot.charId));
+  return (
+    members.length === saved.size &&
+    members.every((charId) => saved.has(charId))
+  );
+}
+
 export function findCalibration(
   calibrations: readonly Calibration[],
   templateId: string,
